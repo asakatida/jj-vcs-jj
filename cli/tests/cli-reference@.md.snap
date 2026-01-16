@@ -101,6 +101,12 @@ This document contains the help content for the `jj` command-line program.
 * [`jj split`↴](#jj-split)
 * [`jj squash`↴](#jj-squash)
 * [`jj status`↴](#jj-status)
+* [`jj subtree`↴](#jj-subtree)
+* [`jj subtree add`↴](#jj-subtree-add)
+* [`jj subtree merge`↴](#jj-subtree-merge)
+* [`jj subtree split`↴](#jj-subtree-split)
+* [`jj subtree pull`↴](#jj-subtree-pull)
+* [`jj subtree push`↴](#jj-subtree-push)
 * [`jj tag`↴](#jj-tag)
 * [`jj tag delete`↴](#jj-tag-delete)
 * [`jj tag list`↴](#jj-tag-list)
@@ -176,6 +182,7 @@ To get started, see the tutorial [`jj help -k tutorial`].
 * `split` — Split a revision in two
 * `squash` — Move changes from a revision into another revision
 * `status` — Show high-level repo status [default alias: st]
+* `subtree` — Commands for working with subtrees
 * `tag` — Manage tags
 * `undo` — Undo the last operation
 * `unsign` — Drop a cryptographic signature
@@ -3082,6 +3089,127 @@ This includes:
 ###### **Arguments:**
 
 * `<FILESETS>` — Restrict the status display to these paths
+
+
+
+## `jj subtree`
+
+Commands for working with subtrees
+
+Subtrees allow including external repositories as subdirectories within your repository, with bidirectional merging capabilities.
+
+**Usage:** `jj subtree <COMMAND>`
+
+###### **Subcommands:**
+
+* `add` — Add a repository as a subtree
+* `merge` — Merge changes into an existing subtree
+* `split` — Extract subtree history as a separate branch
+* `pull` — Pull and merge changes from a remote repository
+* `push` — Push subtree changes to a remote repository
+
+
+
+## `jj subtree add`
+
+Add a repository as a subtree
+
+**Usage:** `jj subtree add [OPTIONS] --prefix <PREFIX> [LOCAL_COMMIT]`
+
+###### **Arguments:**
+
+* `<LOCAL_COMMIT>` — Local commit to import as subtree (mutually exclusive with --repository)
+
+###### **Options:**
+
+* `-P`, `--prefix <PREFIX>` — Path prefix for the subtree in this repository
+* `--repository <REPOSITORY>` — Repository URL to fetch from
+* `--remote-ref <REMOTE_REF>` — Remote ref to import (requires --repository)
+* `--no-squash` — Don't squash history (squash is the default)
+* `-m`, `--message <MESSAGE>` — Commit message for the add operation
+* `--no-metadata` — Don't add subtree metadata to commit descriptions
+
+
+
+## `jj subtree merge`
+
+Merge changes into an existing subtree
+
+**Usage:** `jj subtree merge [OPTIONS] --prefix <PREFIX> <LOCAL_COMMIT>`
+
+###### **Arguments:**
+
+* `<LOCAL_COMMIT>` — Local commit to merge
+
+###### **Options:**
+
+* `-P`, `--prefix <PREFIX>` — Path prefix for the subtree
+* `--repository <REPOSITORY>` — Repository URL for fetching missing tags (optional)
+* `--no-squash` — Don't squash history (squash is the default)
+* `-m`, `--message <MESSAGE>` — Commit message for the merge
+
+
+
+## `jj subtree split`
+
+Extract subtree history as a separate branch
+
+**Usage:** `jj subtree split [OPTIONS] --prefix <PREFIX> [LOCAL_COMMIT]`
+
+###### **Arguments:**
+
+* `<LOCAL_COMMIT>` — Commit to split from (defaults to @)
+
+###### **Options:**
+
+* `-P`, `--prefix <PREFIX>` — Path prefix for the subtree
+* `--annotate <ANNOTATE>` — Annotation prefix for split commit messages
+* `-b`, `--bookmark <BOOKMARK>` — Create bookmark pointing to split history head
+* `--ignore-joins` — Ignore previous split/rejoin metadata
+* `--onto <ONTO>` — Base commit for split (for non-subtree-add imports)
+* `--rejoin` — Merge split history back into main project
+* `--keep-empty` — Preserve commits that don't modify the subtree
+* `--skip-empty` — Skip commits that don't modify the subtree
+* `--squash` — Combine all subtree changes into a single commit
+
+
+
+## `jj subtree pull`
+
+Pull and merge changes from a remote repository
+
+**Usage:** `jj subtree pull [OPTIONS] --prefix <PREFIX> <REPOSITORY> <REMOTE_REF>`
+
+###### **Arguments:**
+
+* `<REPOSITORY>` — Repository URL to fetch from
+* `<REMOTE_REF>` — Remote ref to fetch
+
+###### **Options:**
+
+* `-P`, `--prefix <PREFIX>` — Path prefix for the subtree
+* `--no-squash` — Don't squash history
+* `-m`, `--message <MESSAGE>` — Commit message for the merge
+
+
+
+## `jj subtree push`
+
+Push subtree changes to a remote repository
+
+**Usage:** `jj subtree push [OPTIONS] --prefix <PREFIX> <REPOSITORY> <REFSPEC>`
+
+###### **Arguments:**
+
+* `<REPOSITORY>` — Repository URL to push to
+* `<REFSPEC>` — Remote refspec ([+][<local-commit>:]<remote-ref>)
+
+###### **Options:**
+
+* `-P`, `--prefix <PREFIX>` — Path prefix for the subtree
+* `--rejoin` — Merge split history back after push
+* `--annotate <ANNOTATE>` — Annotation prefix for split commit messages
+* `--ignore-joins` — Ignore previous split/rejoin metadata
 
 
 
