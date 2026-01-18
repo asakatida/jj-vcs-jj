@@ -1,24 +1,40 @@
 # Jujutsu Subtree Command
 
-Authors: [Asa (Alexis) Katida](mailto:2058304+asakatida@users.noreply.github.com)
+Author: [Asa (Alexis) Katida](mailto:2058304+asakatida@users.noreply.github.com)
 
-This document describes the planned implementation of subtree functionality in Jujutsu.
+## Summary
 
-**Summary:** This design document proposes the implementation of a `jj subtree` command that provides functionality equivalent to Git's `git subtree` command. The subtree feature allows including external repositories as subdirectories within a Jujutsu repository, with the ability to merge changes bidirectionally and extract subtree histories as standalone repositories.
+This design document proposes the implementation of a `jj subtree` command that provides functionality equivalent to Git's `git subtree` command. The subtree feature allows including external repositories as subdirectories within a Jujutsu repository, with the ability to merge changes bidirectionally and extract subtree histories as standalone repositories.
 
 The subtree command will support the core operations: `add`, `merge`, `split`, `pull`, and `push`, enabling workflows where subprojects can be maintained as separate repositories while being integrated into a larger project.
 
-## Objective
+Unlike Git submodules, subtrees do not require special metadata files (like `.gitmodules`) or force end-users to understand subtree internals. A subtree is just a subdirectory that can be committed to, branched, and merged along with the project.
 
-Jujutsu currently does not have subtree functionality. Users who need to include external repositories as subdirectories typically use Git submodules or manual copying/pasting of code. This limits interoperability with Git-based workflows and requires users to manage separate repositories manually.
+## State of the Feature
 
-## Background
+Jujutsu currently has placeholder implementations for subtree commands (in `cli/src/commands/subtree/`) but no functional implementation. Users who need to include external repositories as subdirectories must either:
 
-Git's `git subtree` command provides the reference implementation. Key differences in Jujutsu's approach:
+- Use Git submodules (requires colocated workspace, adds complexity)
+- Manually copy/paste code (loses history, complicates updates)
+- Use external tooling to manage vendored dependencies
 
-- Jujutsu's commit model (no staging area, working copy as commit) affects how subtree operations integrate
+This limits interoperability with Git-based workflows and requires users to manage separate repositories manually.
+
+## Prior Work
+
+Git's `git subtree` command (contributed by Avery Pennarun) provides the reference implementation for this feature. Key characteristics:
+
+- **Storage model**: Subtree content stored directly in commits, not as separate repositories
+- **History extraction**: The `split` command extracts subtree-only history for standalone use
+- **Bidirectional workflow**: Changes can flow from subtree to main project and back
+- **Squash mode**: Optionally collapse imported history into single commits
+- **Metadata tracking**: Uses commit message trailers (`git-subtree-dir:`, `git-subtree-split:`) to track operations
+
+Key differences in Jujutsu's approach:
+- Jujutsu's commit model (no staging area, working copy as commit) simplifies subtree operations
 - Jujutsu's operation log and undo capabilities provide better debugging for complex subtree operations
-- Jujutsu's conflict resolution model may handle subtree merges differently
+- Jujutsu's first-class conflict representation handles subtree merges more gracefully
+- Backend abstraction allows subtree operations on non-Git backends (with local commits)
 
 **Key Concepts:** This document assumes familiarity with jj's [revsets](../revsets.md) for specifying commits, [bookmarks](../glossary.md#bookmark) for naming commits, and [conflict handling](../conflicts.md). Subtree operations create [merge commits](../glossary.md#merge) and may produce [conflicts](../glossary.md#conflict) requiring resolution via `jj resolve`.
 
@@ -41,13 +57,26 @@ Git's `git subtree` command provides the reference implementation. Key differenc
 
 ## Overview
 
-The subtree command will be implemented as a subcommand of `jj`, similar to how `jj git` provides Git-related operations. It will support the following subcommands:
+The subtree command will be implemented as a subcommand of `jj`, similar to how `jj git` provides Git-related operations. The existing placeholder structure in `cli/src/commands/subtree/` provides the foundation.
 
-- `jj subtree add <prefix> <repository> <ref>` - Import a repository as a subdirectory
-- `jj subtree merge <prefix> <commit>` - Merge changes into an existing subtree
-- `jj subtree split <prefix> [<commit>]` - Extract subtree history as a new synthetic history
-- `jj subtree pull <prefix> <repository> <ref>` - Pull and merge changes from a remote
-- `jj subtree push <prefix> <repository> <ref>` - Push subtree changes to a remote
+### Command Synopsis
+
+```
+jj subtree add -P <prefix> <local-commit>
+jj subtree add -P <prefix> <repository> <remote-ref>
+jj subtree merge -P <prefix> <local-commit> [<repository>]
+jj subtree split -P <prefix> [<local-commit>]
+jj subtree pull -P <prefix> <repository> <remote-ref>
+jj subtree push -P <prefix> <repository> <refspec>
+```
+
+### Command Descriptions
+
+- `jj subtree add` - Import a repository as a subdirectory, creating a merge commit
+- `jj subtree merge` - Merge changes from a commit into an existing subtree
+- `jj subtree split` - Extract subtree history as a new synthetic history suitable for export
+- `jj subtree pull` - Fetch from remote and merge into subtree (wrapper around fetch + merge)
+- `jj subtree push` - Split subtree and push to remote (wrapper around split + push)
 
 ### Visual Overview
 
@@ -152,9 +181,9 @@ If both sides modified `vendor/lib/bug.rs`, a conflict is created and can be res
 
 8. **Empty Commit Handling**: Require explicit user choice via `--keep-empty` or `--skip-empty` flags for split command to make behavior transparent and prevent surprises.
 
-## Detailed Design
+### Detailed Design
 
-### File Organization
+#### File Organization
 
 ```
 cli/src/commands/subtree/
@@ -174,51 +203,29 @@ lib/src/subtree/
 └── git_backend.rs      # Git-specific remote operations (NEW)
 ```
 
-### Command Structure
+#### Command Structure
+
+The existing dispatcher in `cli/src/commands/subtree/mod.rs` already defines the subcommand enum. The argument structures follow jj's clap-derive patterns:
 
 ```rust
-#[derive(Subcommand, Clone, Debug)]
-pub enum SubtreeCommand {
-    Add(SubtreeAddArgs),
-    Merge(SubtreeMergeArgs),
-    Split(SubtreeSplitArgs),
-    Pull(SubtreePullArgs),
-    Push(SubtreePushArgs),
-}
-
-/// Common arguments for all subtree commands
+/// Add a subtree from a commit or remote repository
 #[derive(clap::Args, Clone, Debug)]
-pub struct SubtreeCommonArgs {
-    /// Path to the subtree directory
-    #[arg(short = 'P', long, required = true)]
-    pub prefix: String,
-
-    /// GPG-sign commits
-    #[arg(short = 'S', long)]
-    pub gpg_sign: Option<Option<String>>,
-
-    /// Suppress output messages
-    #[arg(short, long)]
-    pub quiet: bool,
-
-    /// Produce debug output
-    #[arg(short, long)]
-    pub debug: bool,
-}
-
-#[derive(Args, Clone, Debug)]
 pub struct SubtreeAddArgs {
-    /// The path in the repository to place the subtree
-    #[arg(value_name = "PREFIX")]
+    /// Path prefix for the subtree in this repository
+    #[arg(short = 'P', long, required = true)]
     prefix: String,
 
-    /// Repository to add as subtree
-    #[arg(value_name = "REPOSITORY")]
-    repository: String,
+    /// Local commit to import as subtree (mutually exclusive with repository)
+    #[arg(value_name = "LOCAL_COMMIT", conflicts_with_all = ["repository", "remote_ref"])]
+    local_commit: Option<RevisionArg>,
 
-    /// Remote ref to import
-    #[arg(value_name = "REF")]
-    remote_ref: String,
+    /// Repository URL to fetch from
+    #[arg(long, requires = "remote_ref")]
+    repository: Option<String>,
+
+    /// Remote ref to import (requires --repository)
+    #[arg(long, requires = "repository")]
+    remote_ref: Option<String>,
 
     /// Don't squash history (squash is default)
     #[arg(long)]
@@ -233,48 +240,129 @@ pub struct SubtreeAddArgs {
     no_metadata: bool,
 }
 
-/// Options for split-like operations (split, push)
+/// Merge changes into an existing subtree
 #[derive(clap::Args, Clone, Debug)]
-pub struct SubtreeSplitOptions {
-    /// Annotation prefix for commit messages
-    #[arg(long)]
-    pub annotate: Option<String>,
+pub struct SubtreeMergeArgs {
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
+    prefix: String,
 
-    /// Create branch with split history
+    /// Local commit to merge
+    #[arg(value_name = "LOCAL_COMMIT", required = true)]
+    local_commit: RevisionArg,
+
+    /// Repository URL for fetching missing tags (optional)
+    #[arg(long)]
+    repository: Option<String>,
+
+    /// Don't squash history (squash is default)
+    #[arg(long)]
+    no_squash: bool,
+
+    /// Commit message for the merge
+    #[arg(long, short)]
+    message: Option<String>,
+}
+
+/// Split subtree history into standalone commits
+#[derive(clap::Args, Clone, Debug)]
+pub struct SubtreeSplitArgs {
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
+    prefix: String,
+
+    /// Commit to split from (defaults to @)
+    #[arg(value_name = "LOCAL_COMMIT")]
+    local_commit: Option<RevisionArg>,
+
+    /// Annotation prefix for split commit messages
+    #[arg(long)]
+    annotate: Option<String>,
+
+    /// Create bookmark pointing to split history head
     #[arg(short, long)]
-    pub branch: Option<String>,
+    bookmark: Option<String>,
 
-    /// Ignore previous joins
+    /// Ignore previous split/rejoin metadata
     #[arg(long)]
-    pub ignore_joins: bool,
+    ignore_joins: bool,
 
-    /// Base commit for split
+    /// Base commit for split (for non-subtree-add imports)
     #[arg(long)]
-    pub onto: Option<String>,
+    onto: Option<RevisionArg>,
 
-    /// Rejoin split commits
+    /// Merge split history back into main project
     #[arg(long)]
-    pub rejoin: bool,
+    rejoin: bool,
 
     /// Preserve commits that don't modify the subtree
     #[arg(long, conflicts_with = "skip_empty")]
-    pub keep_empty: bool,
+    keep_empty: bool,
 
-    /// Skip commits that don't modify the subtree
+    /// Skip commits that don't modify the subtree (required choice)
     #[arg(long, conflicts_with = "keep_empty")]
-    pub skip_empty: bool,
+    skip_empty: bool,
 
     /// Combine all subtree changes into a single commit
-    #[arg(long, conflicts_with = "no_squash")]
-    pub squash: bool,
+    #[arg(long)]
+    squash: bool,
+}
 
-    /// Preserve full commit history in split (default behavior)
-    #[arg(long, conflicts_with = "squash")]
-    pub no_squash: bool,
+/// Pull and merge from remote into subtree
+#[derive(clap::Args, Clone, Debug)]
+pub struct SubtreePullArgs {
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
+    prefix: String,
+
+    /// Repository URL to fetch from
+    #[arg(value_name = "REPOSITORY", required = true)]
+    repository: String,
+
+    /// Remote ref to fetch
+    #[arg(value_name = "REMOTE_REF", required = true)]
+    remote_ref: String,
+
+    /// Don't squash history
+    #[arg(long)]
+    no_squash: bool,
+
+    /// Commit message for the merge
+    #[arg(long, short)]
+    message: Option<String>,
+}
+
+/// Split and push subtree to remote
+#[derive(clap::Args, Clone, Debug)]
+pub struct SubtreePushArgs {
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
+    prefix: String,
+
+    /// Repository URL to push to
+    #[arg(value_name = "REPOSITORY", required = true)]
+    repository: String,
+
+    /// Remote refspec ([+][<local-commit>:]<remote-ref>)
+    #[arg(value_name = "REFSPEC", required = true)]
+    refspec: String,
+
+    /// Merge split history back after push
+    #[arg(long)]
+    rejoin: bool,
+
+    // Split options inherited
+    #[arg(long)]
+    annotate: Option<String>,
+
+    #[arg(long)]
+    ignore_joins: bool,
 }
 ```
 
-### Backend Abstraction
+**Note**: Uses `RevisionArg` for commit arguments to integrate with jj's revision parsing. Uses `bookmark` instead of `branch` to match jj terminology.
+
+#### Backend Abstraction
 
 To support backend-agnostic operations from the start, we separate core tree operations from remote operations.
 
@@ -324,7 +412,7 @@ pub struct LocalSubtreeBackend {
 }
 ```
 
-### Metadata Management
+#### Metadata Management
 
 Subtree metadata is stored in commit descriptions using Git-style trailers:
 
@@ -361,9 +449,9 @@ Subtree-mainline: abc123...
 Subtree-split: def456...
 ```
 
-### Core Operations
+#### Core Operations
 
-#### Add Operation
+##### Add Operation
 
 The `add` operation creates a new commit that includes the content of the specified repository at the given prefix path.
 
@@ -396,7 +484,7 @@ The `add` operation creates a new commit that includes the content of the specif
 - Check prefix doesn't conflict with existing files
 - For remote operations, verify Git backend is available
 
-#### Merge Operation
+##### Merge Operation
 
 The `merge` operation pulls changes from a specified commit and merges them into the subtree at the prefix.
 
@@ -423,7 +511,7 @@ The `merge` operation pulls changes from a specified commit and merges them into
 - Uses `restore_tree()` pattern for selective path merging
 - Handles conflicts using Jujutsu's conflict model
 
-#### Split Operation
+##### Split Operation
 
 The `split` operation extracts commits that affect only the subtree and creates a synthetic history suitable for export.
 
@@ -446,7 +534,7 @@ The `split` operation extracts commits that affect only the subtree and creates 
      - Map parent commits to their synthetic equivalents
      - Add metadata linking to original (Subtree-mainline)
 4. If `--rejoin`: merge synthetic history back into main repo
-5. If `--branch`: create branch pointing to synthetic HEAD
+5. If `--bookmark`: create bookmark pointing to synthetic HEAD
 6. If `--annotate`: prefix commit messages with annotation
 7. Return synthetic HEAD commit ID
 
@@ -464,7 +552,7 @@ The `split` operation extracts commits that affect only the subtree and creates 
 - Optimizing with `--ignore-joins` vs auto-detecting previous splits
 - In squash mode: combining commit messages meaningfully while preserving authorship info
 
-#### Split Base Detection
+##### Split Base Detection
 
 The split operation must determine where to start extracting history. Two strategies are available:
 
@@ -502,7 +590,7 @@ Both jj and git-subtree trailer formats are recognized:
 | `Subtree-split:` | `git-subtree-split:` |
 | `Subtree-mainline:` | `git-subtree-mainline:` |
 
-#### Pull Operation
+##### Pull Operation
 
 Fetch from remote and merge into subtree (wrapper around fetch + merge).
 
@@ -512,7 +600,7 @@ Fetch from remote and merge into subtree (wrapper around fetch + merge).
 3. Resolve remote-ref to commit
 4. Call subtree merge logic with fetched commit
 
-#### Push Operation
+##### Push Operation
 
 Split subtree and push to remote (wrapper around split + push).
 
@@ -523,9 +611,9 @@ Split subtree and push to remote (wrapper around split + push).
 4. Push to repository using backend's `push_remote()`
 5. If `--rejoin`: merge synthetic history back into main repo
 
-### Integration with Jujutsu Core
+#### Integration with Jujutsu Core
 
-#### Rewrite Integration
+##### Rewrite Integration
 
 Subtree operations extensively use the `jj_lib::rewrite` module:
 
@@ -595,7 +683,7 @@ pub async fn filter_commits_by_prefix(
 }
 ```
 
-#### Remote Repository Handling
+##### Remote Repository Handling
 
 For colocated Git workspaces, reuse existing Git remote infrastructure. For pure Jujutsu repositories, gracefully fail with informative error message directing users to use local commit operations.
 
@@ -627,7 +715,54 @@ pub fn cmd_subtree_pull(
 }
 ```
 
-#### Conflict Resolution
+**Transaction Pattern:**
+
+All subtree commands use jj's transaction model for atomic operations:
+
+```rust
+#[instrument(skip_all)]
+pub fn cmd_subtree_add(
+    ui: &mut Ui,
+    command: &CommandHelper,
+    args: &SubtreeAddArgs,
+) -> Result<(), CommandError> {
+    let mut workspace_command = command.workspace_helper(ui)?;
+
+    // Parse prefix path
+    let prefix = RepoPath::from_internal_string(&args.prefix);
+
+    // Resolve source commit
+    let source_commit = workspace_command.resolve_single_rev(ui, &args.local_commit)?;
+
+    // Start transaction
+    let mut tx = workspace_command.start_transaction();
+
+    // Get source tree and move to prefix
+    let source_tree = source_commit.tree()?;
+    let prefixed_tree = move_tree_to_prefix(&source_tree, &prefix).block_on()?;
+
+    // Create merge commit
+    let current_commit = tx.repo().view().get_wc_commit_id(&workspace_command.workspace_id());
+    let new_commit = tx.repo_mut()
+        .new_commit(
+            tx.settings(),
+            vec![current_commit.clone(), source_commit.id().clone()],
+            prefixed_tree.id().clone(),
+        )
+        .set_description(&format!("Add subtree at {}", args.prefix))
+        .write()?;
+
+    // Update working copy
+    tx.repo_mut().check_out(workspace_command.workspace_id(), &new_commit)?;
+
+    // Finish transaction (automatically rebases descendants)
+    tx.finish(ui, format!("subtree add at {}", args.prefix))?;
+
+    Ok(())
+}
+```
+
+##### Conflict Resolution
 
 Subtree operations may create directory conflicts. Jujutsu's conflict resolution handles:
 
@@ -636,7 +771,7 @@ Subtree operations may create directory conflicts. Jujutsu's conflict resolution
 - Conflicts between subtree and main repository content
 - Native conflict markers preserved through operations
 
-#### Divergent History Handling
+##### Divergent History Handling
 
 When subtree operations encounter divergent history (concurrent changes in mainline and upstream), jj's native conflict resolution model is used.
 
@@ -671,7 +806,7 @@ jj commit -m "Merge upstream with resolved conflicts"
 
 Conflict markers follow jj's standard format, with labels indicating subtree context.
 
-### User Interface
+#### User Interface
 
 The command will follow Jujutsu's CLI conventions:
 
@@ -680,12 +815,24 @@ The command will follow Jujutsu's CLI conventions:
 - Provide `--message` for custom commit messages
 - Use `--annotate` for split operations to distinguish synthetic commits
 
-### Error Handling
+#### Error Handling
+
+Error handling follows jj's established patterns using `CommandError`:
 
 - Validate prefix paths don't conflict with existing content
-- Handle missing remote repositories gracefully
+- Handle missing remote repositories gracefully with `user_error_with_hint()`
 - Provide clear error messages for invalid subtree operations
 - Support `--dry-run` for previewing operations
+
+```rust
+// Example error handling pattern
+if !workspace_command.repo().store().is_git_backend() {
+    return Err(user_error_with_hint(
+        "Pull operation requires a Git-backed repository.",
+        "Use 'jj subtree merge' with a local commit instead.",
+    ));
+}
+```
 
 ## Implementation Phases
 
@@ -766,7 +913,7 @@ The command will follow Jujutsu's CLI conventions:
    - Recognize `git-subtree-*` format for compatibility
    - Fallback to native diff-based detection
 6. Implement `--ignore-joins` to bypass metadata scanning
-7. Implement `--branch` option
+7. Implement `--bookmark` option
 8. Implement `--rejoin` for merging synthetic history back
 9. Handle merge commits properly (in non-squash mode)
 10. Add metadata linking (Subtree-mainline trailers)
@@ -1095,7 +1242,7 @@ The following design decisions remain open for discussion:
    - Use first/last commit message only
    - Prompt user for message (current behavior with `--message`)
 
-## Alternatives Considered
+## Alternatives Considered (Why Not?)
 
 ### Separate Repository Storage
 
@@ -1128,7 +1275,7 @@ Use bookmarks to track split points. This was rejected because:
 
 - Clutters bookmark namespace
 - Requires naming convention
-- **Decision**: Use commit metadata, optionally create bookmarks with `--branch`
+- **Decision**: Use commit metadata, optionally create bookmarks with `--bookmark`
 
 ### Default to Full History (No Squash)
 
@@ -1148,9 +1295,12 @@ Automatically skip commits that don't modify subtree during split. This was reje
 
 ## Issues Addressed
 
-- [#XXXX] - Request for subtree functionality
-- Integration with existing Git workflows
-- Support for monorepo-style development
+This design addresses the following user needs:
+
+- Integration with existing Git subtree workflows for teams migrating to jj
+- Support for monorepo-style development with vendored dependencies
+- Bidirectional synchronization between main projects and extracted subprojects
+- Compatibility with Git colocated workspaces
 
 ## Related Work
 
@@ -1231,7 +1381,7 @@ cd vendor/lib && git subtree split -P vendor/lib -b lib-split
 # Expected: Success, creates valid split branch
 
 # Test 2: jj split → git merge
-jj subtree split -P vendor/lib --skip-empty -b jj-lib-split
+jj subtree split -P vendor/lib --skip-empty --bookmark jj-lib-split
 cd vendor/lib && git subtree merge -P vendor/lib jj-lib-split
 # Expected: Success, merges correctly
 
@@ -1263,7 +1413,7 @@ git log --format='%(trailers)' @
 - **Trailer Format**: Use exact git trailer format: `Subtree-dir: path/to/subtree`
 - **Commit Message Preservation**: Don't add jj-specific formatting that git can't parse
 - **Parent Relationships**: Maintain exact same merge parent structure as git subtree
-- **Ref Handling**: When creating branches with `--branch`, use git-compatible ref names
+- **Ref Handling**: When creating bookmarks with `--bookmark`, use git-compatible ref names
 
 This ensures users can:
 - Start with `jj subtree`, later use `git subtree` for some operations
@@ -1310,7 +1460,7 @@ git subtree push -P vendor/lib https://example.com/lib.git feature
 git subtree add -P vendor/other https://example.com/other.git main
 jj git import
 jj subtree pull -P vendor/other https://example.com/other.git main
-jj subtree split -P vendor/other --skip-empty -b jj-maintained
+jj subtree split -P vendor/other --skip-empty --bookmark jj-maintained
 jj subtree push -P vendor/other https://example.com/other.git feature
 # Expected: All operations succeed
 
@@ -1369,5 +1519,30 @@ The initial implementation will NOT support the following features. These limita
 9. **Automatic subtree conflict resolution**: Smart conflict resolution for common cases
 10. **Integration with Jujutsu's sparse checkout features**: Efficient handling of large subtrees
 11. **Subtree-aware diff and log operations**: Better visualization of subtree changes
-12. **Support for different merge strategies per subtree**: Configurable merge behavior</content>
-<parameter name="filePath">/workspaces/jj/docs/design/subtree-command.md
+12. **Support for different merge strategies per subtree**: Configurable merge behavior
+
+## References
+
+### Primary Sources
+
+- [Git subtree documentation](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge) - Git's official documentation on subtree merging
+- [git-subtree contrib script](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.sh) - The reference implementation by Avery Pennarun
+- [git-subtree manual page](https://manpages.debian.org/testing/git-man/git-subtree.1.en.html) - Detailed command reference
+
+### Related jj Documentation
+
+- [Revsets](../revsets.md) - Revision specification syntax used in subtree commands
+- [Conflicts](../conflicts.md) - How jj handles merge conflicts (relevant to subtree merge)
+- [Glossary](../glossary.md) - Definitions of jj terminology (bookmark, merge, working copy)
+- [Working Copy](../working-copy.md) - How jj manages the working copy during operations
+
+### Prior Art
+
+- [Mercurial Subrepositories](https://wiki.mercurial-scm.org/Subrepository) - Similar feature in Mercurial (different approach: separate repos)
+- [Git Submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) - Alternative approach using repository references
+- [Google's Piper/CitC](https://research.google/pubs/pub45424/) - Large-scale monorepo management (influences design philosophy)
+
+### Related Discussions
+
+- jj Discord discussions on subtree/submodule support
+- GitHub issues related to monorepo workflows and vendored dependencies
