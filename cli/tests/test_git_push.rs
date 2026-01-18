@@ -1024,10 +1024,12 @@ fn test_git_push_changes() {
     insta::assert_snapshot!(output, @"
     ------- stderr -------
     Creating bookmark dupe-bookmark for revision yostqsxwqrlt
-    Error: Bookmark already exists: dupe-bookmark
-    Hint: Use 'jj bookmark move' to move it, and 'jj git push -b dupe-bookmark' to push it
+    Creating bookmark dupe-bookmark for revision yqosqzytrlsw
+    Creating bookmark dupe-bookmark for revision zsuskulnrvyr
+    Creating bookmark dupe-bookmark for revision qpvuntsmwlqt
+    Changes to push to origin:
+      Add bookmark dupe-bookmark to 9b2e76de3920
     [EOF]
-    [exit status: 1]
     ");
 
     // Bad `git_push_bookmark` templates

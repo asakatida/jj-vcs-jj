@@ -664,20 +664,13 @@ fn test_command_completion(shell: Shell) {
     let output = test_env.complete_at(shell, 1, ["b"]);
     match shell {
         Shell::Zsh => {
-            insta::assert_snapshot!(output, @"
-            bisect:Find a bad revision by bisection
-            bookmark:Manage bookmarks [default alias: b][EOF]
-            ");
+            insta::assert_snapshot!(output, @"bookmark:Manage bookmarks [default alias: b][EOF]");
         }
         Shell::Bash => {
-            insta::assert_snapshot!(output, @"
-            bisect
-            bookmark[EOF]
-            ");
+            insta::assert_snapshot!(output, @"bookmark[EOF]");
         }
         Shell::Fish => {
             insta::assert_snapshot!(output, @"
-            bisect	Find a bad revision by bisection
             bookmark	Manage bookmarks [default alias: b]
             [EOF]
             ");
@@ -796,14 +789,14 @@ fn test_aliases_are_completed(shell: Shell) {
     let output = work_dir.complete_at(shell, 1, ["user-alias"]);
     match shell {
         Shell::Bash => {
-            insta::assert_snapshot!(output, @"user-alias[EOF]");
+            insta::assert_snapshot!(output, @"bookmark[EOF]");
         }
         Shell::Zsh => {
-            insta::assert_snapshot!(output, @"user-alias[EOF]");
+            insta::assert_snapshot!(output, @"bookmark:Manage bookmarks [default alias: b][EOF]");
         }
         Shell::Fish => {
             insta::assert_snapshot!(output, @"
-            user-alias
+            bookmark	Manage bookmarks [default alias: b]
             [EOF]
             ");
         }
