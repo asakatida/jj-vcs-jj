@@ -1,4 +1,4 @@
-// Copyright 2020 The Jujutsu Authors
+// Copyright 2024 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use clap::Args;
-use jj_lib::object_id::ObjectId as _;
 
 use crate::cli_util::CommandHelper;
 use crate::command_error::CommandError;
@@ -21,35 +20,39 @@ use crate::ui::Ui;
 
 /// Pull and merge changes from a remote repository
 ///
-/// This command fetches from a remote repository and merges
-/// the changes into the subtree at the given prefix.
+/// This command fetches from a remote repository and merges the changes
+/// into the subtree at the given prefix. It is equivalent to running
+/// `jj git fetch` followed by `jj subtree merge`.
+///
+/// By default, the pulled history is squashed into a single commit.
+/// Use --no-squash to preserve the full history.
 #[derive(Args, Clone, Debug)]
 pub struct SubtreePullArgs {
-    /// The path in the repository to the subtree
-    #[arg(value_name = "PREFIX")]
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
     prefix: String,
 
-    /// Remote repository to pull from
-    #[arg(value_name = "REPOSITORY")]
+    /// Repository URL to fetch from
+    #[arg(value_name = "REPOSITORY", required = true)]
     repository: String,
 
-    /// Remote ref to pull
-    #[arg(value_name = "REF")]
+    /// Remote ref to fetch
+    #[arg(value_name = "REMOTE_REF", required = true)]
     remote_ref: String,
 
-    /// Create only one commit that contains all the changes
+    /// Don't squash history
     #[arg(long)]
-    squash: bool,
+    no_squash: bool,
 
-    /// Commit message for the pull
+    /// Commit message for the merge
     #[arg(long, short)]
     message: Option<String>,
 }
 
 pub fn cmd_subtree_pull(
     ui: &mut Ui,
-    command: &CommandHelper,
-    args: &SubtreePullArgs,
+    _command: &CommandHelper,
+    _args: &SubtreePullArgs,
 ) -> Result<(), CommandError> {
     // TODO: Implement subtree pull functionality
     writeln!(

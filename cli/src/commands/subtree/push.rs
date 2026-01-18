@@ -1,4 +1,4 @@
-// Copyright 2020 The Jujutsu Authors
+// Copyright 2024 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use clap::Args;
-use jj_lib::object_id::ObjectId as _;
 
 use crate::cli_util::CommandHelper;
 use crate::command_error::CommandError;
@@ -21,31 +20,45 @@ use crate::ui::Ui;
 
 /// Push subtree changes to a remote repository
 ///
-/// This command splits the subtree history and pushes it
-/// to a remote repository and ref.
+/// This command splits the subtree history and pushes it to a remote
+/// repository. It is equivalent to running `jj subtree split` followed
+/// by `jj git push`.
+///
+/// The refspec format is `[+][<local-commit>:]<remote-ref>`, where:
+/// - `+` indicates a force push
+/// - `<local-commit>` is the commit to push from (defaults to the split head)
+/// - `<remote-ref>` is the remote ref to push to
 #[derive(Args, Clone, Debug)]
 pub struct SubtreePushArgs {
-    /// The path in the repository to the subtree
-    #[arg(value_name = "PREFIX")]
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
     prefix: String,
 
-    /// Remote repository to push to
-    #[arg(value_name = "REPOSITORY")]
+    /// Repository URL to push to
+    #[arg(value_name = "REPOSITORY", required = true)]
     repository: String,
 
-    /// Remote ref to push to
-    #[arg(value_name = "REF")]
-    remote_ref: String,
+    /// Remote refspec ([+][<local-commit>:]<remote-ref>)
+    #[arg(value_name = "REFSPEC", required = true)]
+    refspec: String,
 
-    /// Commit to push from (defaults to HEAD)
-    #[arg(value_name = "COMMIT")]
-    commit: Option<String>,
+    /// Merge split history back after push
+    #[arg(long)]
+    rejoin: bool,
+
+    /// Annotation prefix for split commit messages
+    #[arg(long)]
+    annotate: Option<String>,
+
+    /// Ignore previous split/rejoin metadata
+    #[arg(long)]
+    ignore_joins: bool,
 }
 
 pub fn cmd_subtree_push(
     ui: &mut Ui,
-    command: &CommandHelper,
-    args: &SubtreePushArgs,
+    _command: &CommandHelper,
+    _args: &SubtreePushArgs,
 ) -> Result<(), CommandError> {
     // TODO: Implement subtree push functionality
     writeln!(

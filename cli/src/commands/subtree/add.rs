@@ -1,4 +1,4 @@
-// Copyright 2020 The Jujutsu Authors
+// Copyright 2024 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,43 +13,61 @@
 // limitations under the License.
 
 use clap::Args;
-use jj_lib::object_id::ObjectId as _;
 
 use crate::cli_util::CommandHelper;
+use crate::cli_util::RevisionArg;
 use crate::command_error::CommandError;
 use crate::ui::Ui;
 
 /// Add a repository as a subtree
 ///
-/// This command imports the contents of a remote repository
+/// This command imports the contents of a commit or remote repository
 /// into a subdirectory of the current repository.
+///
+/// The subtree can be imported from either:
+/// - A local commit in the current repository
+/// - A remote repository (requires --repository and --remote-ref)
+///
+/// By default, the imported history is squashed into a single commit.
+/// Use --no-squash to preserve the full history.
 #[derive(Args, Clone, Debug)]
 pub struct SubtreeAddArgs {
-    /// The path in the repository to place the subtree
-    #[arg(value_name = "PREFIX")]
+    /// Path prefix for the subtree in this repository
+    #[arg(short = 'P', long, required = true)]
     prefix: String,
 
-    /// Repository to add as subtree
-    #[arg(value_name = "REPOSITORY")]
-    repository: String,
+    /// Local commit to import as subtree (mutually exclusive with --repository)
+    #[arg(
+        value_name = "LOCAL_COMMIT",
+        conflicts_with_all = ["repository", "remote_ref"]
+    )]
+    local_commit: Option<RevisionArg>,
 
-    /// Remote ref to import
-    #[arg(value_name = "REF")]
-    remote_ref: String,
+    /// Repository URL to fetch from
+    #[arg(long, requires = "remote_ref")]
+    repository: Option<String>,
 
-    /// Import only a single commit instead of full history
+    /// Remote ref to import (requires --repository)
+    #[arg(long, requires = "repository")]
+    remote_ref: Option<String>,
+
+    /// Don't squash history (squash is the default)
     #[arg(long)]
-    squash: bool,
+    no_squash: bool,
 
     /// Commit message for the add operation
     #[arg(long, short)]
     message: Option<String>,
+
+    /// Don't add subtree metadata to commit descriptions
+    #[arg(long)]
+    no_metadata: bool,
 }
 
 pub fn cmd_subtree_add(
     ui: &mut Ui,
-    command: &CommandHelper,
-    args: &SubtreeAddArgs,
+    _command: &CommandHelper,
+    _args: &SubtreeAddArgs,
 ) -> Result<(), CommandError> {
     // TODO: Implement subtree add functionality
     writeln!(

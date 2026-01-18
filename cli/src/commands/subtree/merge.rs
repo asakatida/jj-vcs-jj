@@ -1,4 +1,4 @@
-// Copyright 2020 The Jujutsu Authors
+// Copyright 2024 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,29 +13,37 @@
 // limitations under the License.
 
 use clap::Args;
-use jj_lib::object_id::ObjectId as _;
 
 use crate::cli_util::CommandHelper;
+use crate::cli_util::RevisionArg;
 use crate::command_error::CommandError;
 use crate::ui::Ui;
 
 /// Merge changes into an existing subtree
 ///
-/// This command merges changes from a specified commit
-/// into the subtree at the given prefix.
+/// This command merges changes from a specified commit into the subtree
+/// at the given prefix. The changes are relocated from the source commit's
+/// root to the subtree path before merging.
+///
+/// By default, the merged history is squashed into a single commit.
+/// Use --no-squash to preserve the full history of changes.
 #[derive(Args, Clone, Debug)]
 pub struct SubtreeMergeArgs {
-    /// The path in the repository to the subtree
-    #[arg(value_name = "PREFIX")]
+    /// Path prefix for the subtree
+    #[arg(short = 'P', long, required = true)]
     prefix: String,
 
-    /// Commit to merge into the subtree
-    #[arg(value_name = "COMMIT")]
-    commit: String,
+    /// Local commit to merge
+    #[arg(value_name = "LOCAL_COMMIT", required = true)]
+    local_commit: RevisionArg,
 
-    /// Create only one commit that contains all the changes
+    /// Repository URL for fetching missing tags (optional)
     #[arg(long)]
-    squash: bool,
+    repository: Option<String>,
+
+    /// Don't squash history (squash is the default)
+    #[arg(long)]
+    no_squash: bool,
 
     /// Commit message for the merge
     #[arg(long, short)]
@@ -44,8 +52,8 @@ pub struct SubtreeMergeArgs {
 
 pub fn cmd_subtree_merge(
     ui: &mut Ui,
-    command: &CommandHelper,
-    args: &SubtreeMergeArgs,
+    _command: &CommandHelper,
+    _args: &SubtreeMergeArgs,
 ) -> Result<(), CommandError> {
     // TODO: Implement subtree merge functionality
     writeln!(
