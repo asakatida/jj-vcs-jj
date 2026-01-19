@@ -682,7 +682,7 @@ pub fn has_subtree_at_prefix(tree: &MergedTree, prefix: &RepoPath) -> bool
 pub fn prefix_conflicts_with_file(
     tree: &MergedTree,
     prefix: &RepoPath,
-) -> Option<RepoPathBuf>
+) -> Result<Option<RepoPathBuf>, SubtreeError>
 ```
 
 **Commit Filtering Function (Implemented):**
@@ -690,7 +690,7 @@ pub fn prefix_conflicts_with_file(
 // Filter commits by prefix modification - lib/src/subtree/core.rs
 pub async fn filter_commits_by_prefix(
     repo: &dyn Repo,
-    commits: &[Commit],
+    commits: Vec<Commit>,
     prefix: &RepoPath,
 ) -> Result<Vec<(Commit, bool)>, SubtreeError>
 ```
