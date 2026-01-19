@@ -1,4 +1,4 @@
-// Copyright 2024 The Jujutsu Authors
+// Copyright 2026 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,11 +64,6 @@ pub struct SubtreeMetadata {
 }
 
 impl SubtreeMetadata {
-    /// Creates empty subtree metadata.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Creates metadata with just a subtree directory.
     pub fn with_dir(dir: RepoPathBuf) -> Self {
         Self {
@@ -137,7 +132,7 @@ impl SubtreeMetadata {
     /// assert!(trailers.contains("git-subtree-dir: vendor/lib"));
     /// ```
     pub fn format_trailers(&self) -> String {
-        let mut lines = Vec::new();
+        let mut lines = vec![];
 
         if let Some(ref dir) = self.subtree_dir {
             lines.push(format!(
@@ -153,7 +148,7 @@ impl SubtreeMetadata {
         }
 
         if lines.is_empty() {
-            String::new()
+            String::default()
         } else {
             lines.join("\n") + "\n"
         }

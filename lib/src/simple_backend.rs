@@ -348,6 +348,24 @@ impl Backend for SimpleBackend {
     fn gc(&self, _index: &dyn Index, _keep_newer: SystemTime) -> BackendResult<()> {
         Ok(())
     }
+
+    async fn fetch_remote<'a>(
+571 | |         &'a self,
+572 | |         repository: &'a str,
+573 | |         remote_ref: &'a str,
+574 | |     ) -> BackendResult<CommitId>;
+    | |_________________________________- `fetch_remote` from trait
+...
+593 | /     async fn push_remote<'a>(
+594 | |         &'a self,
+595 | |         repository: &'a str,
+596 | |         local_commit: &'a CommitId,
+597 | |         remote_ref: &'a str,
+598 | |         force: bool,
+599 | |     ) -> BackendResult<()>;
+    | |___________________________- `push_remote` from trait
+...
+606 |       fn supports_remote_operations(&self) -> bool;
 }
 
 #[expect(clippy::assigning_clones)]

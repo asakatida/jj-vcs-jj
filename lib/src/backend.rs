@@ -27,6 +27,9 @@ use thiserror::Error;
 use tokio::io::AsyncRead;
 
 use crate::content_hash::ContentHash;
+use crate::git::GitFetchError;
+use crate::git::GitPushError;
+use crate::git_subprocess::GitSubprocessError;
 use crate::hex_util;
 use crate::index::Index;
 use crate::merge::Merge;
@@ -278,6 +281,22 @@ pub enum BackendError {
         object_type: &'static str,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    #[error("Remote operations require a Git-backed repository")]
+    RemoteNotSupported,
+    #[error("Failed to fetch from remote '{repository}': {message}")]
+    FetchFailed { repository: String, message: String },
+    #[error("Failed to push to remote '{repository}': {message}")]
+    PushFailed { repository: String, message: String },
+    #[error("Remote repository not found: {0}")]
+    RemoteNotFound(String),
+    #[error("Remote ref not found: {0}")]
+    RefNotFound(String),
+    #[error(transparent)]
+    GitSubprocess(#[from] GitSubprocessError),
+    #[error(transparent)]
+    GitFetch(#[from] GitFetchError),
+    #[error(transparent)]
+    GitPush(#[from] GitPushError),
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
     /// A valid operation attempted, but failed because it isn't supported by
@@ -526,6 +545,65 @@ pub trait Backend: Any + Send + Sync + Debug {
     /// objects created after `keep_newer` will be preserved. This mitigates a
     /// risk of deleting new commits created concurrently by another process.
     fn gc(&self, index: &dyn Index, keep_newer: SystemTime) -> BackendResult<()>;
+
+    /// Fetch a commit from a remote repository.
+    ///
+    /// This operation fetches the specified ref from a remote repository and
+    /// returns the commit ID of the fetched content. The commit is imported
+    /// into the jj repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - URL or path to the remote repository
+    /// * `remote_ref` - The ref to fetch (e.g., "main", "refs/heads/feature")
+    ///
+    /// # Returns
+    ///
+    /// The `CommitId` of the fetched commit.
+    ///
+    /// # Errors
+    ///
+    /// - [`BackendError::RemoteNotSupported`] if the backend doesn't support
+    ///   remote operations
+    /// - [`BackendError::FetchFailed`] if the fetch operation fails
+    /// - [`BackendError::RefNotFound`] if the remote ref doesn't exist
+    async fn fetch_remote<'a>(
+        &'a self,
+        repository: &'a str,
+        remote_ref: &'a str,
+    ) -> BackendResult<CommitId>;
+
+    /// Push a commit to a remote repository.
+    ///
+    /// This operation pushes the specified commit to a ref in the remote
+    /// repository. The commit must exist in the local repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `repository` - URL or path to the remote repository
+    /// * `local_commit` - The commit to push
+    /// * `remote_ref` - The ref to push to (e.g., "main", "feature-branch")
+    /// * `force` - Whether to force-push (overwrite remote ref)
+    ///
+    /// # Errors
+    ///
+    /// - [`BackendError::RemoteNotSupported`] if the backend doesn't support
+    ///   remote operations
+    /// - [`BackendError::PushFailed`] if the push operation fails
+    async fn push_remote<'a>(
+        &'a self,
+        repository: &'a str,
+        local_commit: &'a CommitId,
+        remote_ref: &'a str,
+        force: bool,
+    ) -> BackendResult<()>;
+
+    /// Check if this backend supports remote operations.
+    ///
+    /// Returns `true` if [`fetch_remote`](Self::fetch_remote) and
+    /// [`push_remote`](Self::push_remote) are functional. Returns `false` if
+    /// they will always return [`BackendError::RemoteNotSupported`].
+    fn supports_remote_operations(&self) -> bool;
 }
 
 impl dyn Backend {

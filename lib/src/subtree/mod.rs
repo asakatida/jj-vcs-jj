@@ -1,4 +1,4 @@
-// Copyright 2024 The Jujutsu Authors
+// Copyright 2026 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,16 @@
 //! - [`extract_subtree`] - Extract entries at a prefix to root level
 //! - [`filter_commits_by_prefix`] - Identify commits that modify a subtree path
 //!
+//! # Backend Abstraction
+//!
+//! Remote operations (fetch/push) are abstracted through the [`Backend`]
+//! trait:
+//!
+//! - [`GitBackend`] - Git implementation using subprocess
+//! - [`SimpleBackend`] - Fallback for non-Git backends
+//! - [`create_subtree_backend`] - Factory function to create appropriate
+//!   backend
+//!
 //! # Metadata
 //!
 //! Subtree operations track metadata using Git-compatible trailers in commit
@@ -40,10 +50,12 @@
 mod core;
 mod metadata;
 
+// Backend abstraction
 pub use self::core::SubtreeError;
 pub use self::core::extract_subtree;
 pub use self::core::filter_commits_by_prefix;
 pub use self::core::has_subtree_at_prefix;
 pub use self::core::move_tree_to_prefix;
 pub use self::core::prefix_conflicts_with_file;
+// Metadata
 pub use self::metadata::SubtreeMetadata;

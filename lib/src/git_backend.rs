@@ -498,6 +498,75 @@ impl GitBackend {
             .try_into_tree()
             .map_err(|err| to_read_object_err(err, &tree_id))
     }
+
+    /// Get the GitBackend from the store.
+    fn git_backend(&self) -> BackendResult<&GitBackend> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Get the git directory path.
+    fn git_dir(&self) -> BackendResult<PathBuf> {
+        let git_backend = self.git_backend()?;
+        Ok(git_backend.git_repo_path().to_owned())
+    }
+
+    /// Create a temporary remote configuration for the repository URL.
+    fn setup_temp_remote(&self, _repository: &str) -> BackendResult<()> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Clean up the temporary remote.
+    fn cleanup_temp_remote(&self) {}
+
+    /// Run a git command with the configured options.
+    fn run_git_command(&self, _args: &[&str]) -> BackendResult<std::process::Output> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Internal fetch implementation.
+    fn fetch_impl(&self, _repository: &str, _remote_ref: &str) -> BackendResult<CommitId> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Fetch from the temporary remote using git subprocess.
+    fn fetch_from_temp_remote(&self, _remote_ref: &str) -> BackendResult<CommitId> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Internal push implementation.
+    fn push_impl(
+        &self,
+        _repository: &str,
+        _local_commit: &CommitId,
+        _remote_ref: &str,
+        _force: bool,
+    ) -> BackendResult<()> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
+
+    /// Push to the temporary remote using git subprocess.
+    fn push_to_temp_remote(
+        &self,
+        _local_commit: &CommitId,
+        _remote_ref: &str,
+        _force: bool,
+    ) -> BackendResult<()> {
+        Err(BackendError::Other(
+            "Git subprocess operations are not supported in this build".into(),
+        ))
+    }
 }
 
 /// Canonicalizes the given `path` except for the last `".git"` component.
@@ -1493,6 +1562,32 @@ impl Backend for GitBackend {
         // packed-refs cache should be invalidated without relying on mtime.
         git_repo.refs.force_refresh_packed_buffer().ok();
         Ok(())
+    }
+
+    async fn fetch_remote<'a>(
+        &'a self,
+        repository: &'a str,
+        remote_ref: &'a str,
+    ) -> BackendResult<CommitId> {
+        // Wrap the blocking implementation in a future
+        // Note: This is still blocking, but provides an async interface
+        // For true non-blocking, the caller should use spawn_blocking
+        self.fetch_impl(repository, remote_ref)
+    }
+
+    async fn push_remote<'a>(
+        &'a self,
+        repository: &'a str,
+        local_commit: &'a CommitId,
+        remote_ref: &'a str,
+        force: bool,
+    ) -> BackendResult<()> {
+        // Wrap the blocking implementation in a future
+        self.push_impl(repository, local_commit, remote_ref, force)
+    }
+
+    fn supports_remote_operations(&self) -> bool {
+        true
     }
 }
 
