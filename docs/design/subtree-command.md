@@ -14,22 +14,23 @@ Unlike Git submodules, subtrees do not require special metadata files (like `.gi
 
 ### Current Implementation Status
 
-The subtree feature is in **active development**. The library layer with core tree operations is complete, and the CLI command structure is in place. The remaining work is to connect CLI handlers to the library and implement the backend abstraction for remote operations.
+The subtree feature is in **active development**. The library layer is essentially complete, including core tree operations, metadata handling, and backend abstraction with Git implementation. The CLI command structure is in place with full argument parsing. The remaining work is to connect CLI handlers to the library functions.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| CLI command dispatcher | ✅ Complete | `cli/src/commands/subtree/mod.rs` |
+| CLI command dispatcher | ✅ Complete | `cli/src/commands/subtree/mod.rs` (67 lines) |
 | CLI argument definitions | ✅ Complete | All 5 commands have full clap argument structures |
 | CLI common utilities | ✅ Complete | `cli/src/commands/subtree/common.rs` - prefix validation (88 lines) |
 | CLI command implementations | ⏳ Stub only | Commands return placeholder warning messages |
-| Library module structure | ✅ Complete | `lib/src/subtree/mod.rs` - public API exports (49 lines) |
+| Library module structure | ✅ Complete | `lib/src/subtree/mod.rs` - public API exports (75 lines) |
 | Core tree operations | ✅ Complete | `lib/src/subtree/core.rs` - 6 functions implemented (325 lines) |
 | Metadata handling | ✅ Complete | `lib/src/subtree/metadata.rs` - bidirectional git compatibility (345 lines) |
-| Backend abstraction | ❌ Not started | `SubtreeBackend` trait for remote operations |
+| Backend abstraction | ✅ Complete | `lib/src/subtree/backend.rs` - trait + local backend (259 lines) |
+| Git backend | ✅ Complete | `lib/src/subtree/git_backend.rs` - fetch/push implementation (333 lines) |
 | Unit tests | ✅ 16 tests | 3 in core.rs (path joining), 13 in metadata.rs (parsing/formatting) |
-| Integration tests | ❌ Not started | No dedicated test suite |
+| Integration tests | ✅ Complete | `lib/tests/test_subtree.rs` - 21 tests (513 lines) |
 
-**Total implementation: 1,256 lines across 10 files** (719 lines library, 537 lines CLI)
+**Total implementation: 2,387 lines across 12 files** (1,337 lines library, 537 lines CLI, 513 lines tests)
 
 ### What Works Today
 
@@ -49,6 +50,12 @@ The subtree feature is in **active development**. The library layer with core tr
   - `parse_prefix()` - validates and converts prefix string to RepoPathBuf
   - `validate_prefix_for_add()` - calls `prefix_conflicts_with_file()` from library
   - `validate_prefix_exists()` - calls `has_subtree_at_prefix()` from library
+- Backend abstraction for remote operations:
+  - `SubtreeBackend` trait defining `fetch_remote()` and `push_remote()` interfaces
+  - `LocalSubtreeBackend` for non-Git backends (returns "not supported" for remotes)
+  - `GitSubtreeBackend` with full fetch/push implementation using temporary remotes
+  - `create_subtree_backend()` factory function for automatic backend detection
+- Comprehensive integration test suite covering all core operations
 
 ### What Users Must Do Instead
 
@@ -236,11 +243,14 @@ cli/src/commands/subtree/
 └── common.rs           # Shared utilities (✅ complete, 88 lines)
 
 lib/src/subtree/
-├── mod.rs              # Public API and re-exports (✅ complete, 49 lines)
+├── mod.rs              # Public API and re-exports (✅ complete, 75 lines)
 ├── core.rs             # Core subtree logic - backend agnostic (✅ complete, 325 lines)
 ├── metadata.rs         # Commit metadata parsing/writing (✅ complete, 345 lines)
-├── backend.rs          # Backend trait and implementations (❌ not started)
-└── git_backend.rs      # Git-specific remote operations (❌ not started)
+├── backend.rs          # Backend trait and local implementation (✅ complete, 259 lines)
+└── git_backend.rs      # Git-specific remote operations (✅ complete, 333 lines)
+
+lib/tests/
+└── test_subtree.rs     # Integration tests (✅ complete, 513 lines, 21 tests)
 ```
 
 #### Command Structure
@@ -862,7 +872,7 @@ if !workspace_command.repo().store().is_git_backend() {
 | Phase | Focus | Status |
 |-------|-------|--------|
 | Phase 1 | Core Library Infrastructure | ✅ Complete |
-| Phase 2 | Backend Abstraction | ❌ Not started |
+| Phase 2 | Backend Abstraction | ✅ Complete |
 | Phase 3 | Add Command | ⏳ CLI args only |
 | Phase 4 | Merge Command | ⏳ CLI args only |
 | Phase 5 | Split Command | ⏳ CLI args only |
@@ -871,7 +881,7 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 1: Core Library Infrastructure ✅ Complete
 **Files created:**
-- `lib/src/subtree/mod.rs` - Module declaration and public API exports (49 lines)
+- `lib/src/subtree/mod.rs` - Module declaration and public API exports (75 lines)
 - `lib/src/subtree/core.rs` - Backend-agnostic tree operations (325 lines)
 - `lib/src/subtree/metadata.rs` - Metadata parsing and writing (345 lines)
 - `cli/src/commands/subtree/common.rs` - Prefix validation utilities (88 lines)
@@ -897,18 +907,30 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher usage
 - [lib/src/repo_path.rs](lib/src/repo_path.rs) - Path manipulation
 
-### Phase 2: Backend Abstraction ❌ Not Started
-**Files to create:**
-- `lib/src/subtree/backend.rs` - Backend trait definition
-- `lib/src/subtree/git_backend.rs` - Git remote operations
+### Phase 2: Backend Abstraction ✅ Complete
+**Files created:**
+- `lib/src/subtree/backend.rs` - Backend trait and local implementation (259 lines)
+- `lib/src/subtree/git_backend.rs` - Git remote operations (333 lines)
+- `lib/tests/test_subtree.rs` - Integration tests (513 lines, 21 tests)
 
-**Implementation:**
-1. Define SubtreeBackend trait
-2. Implement GitSubtreeBackend using existing git module
-3. Implement LocalSubtreeBackend (no remote support)
-4. Add backend detection logic
+**Implemented functionality:**
+1. ✅ `SubtreeBackend` trait with `fetch_remote()`, `push_remote()`, and `supports_remote_operations()`
+2. ✅ `SubtreeBackendError` enum with detailed error types for all failure modes
+3. ✅ `LocalSubtreeBackend` for non-Git backends (returns "not supported" for remote ops)
+4. ✅ `GitSubtreeBackend` with full fetch/push implementation:
+   - Fetch using temporary remotes with isolated ref namespace (`refs/jj/subtree-fetch`)
+   - Push with optional force-push support
+   - Automatic cleanup of temporary remotes on errors
+5. ✅ `create_subtree_backend()` factory function for automatic backend detection
+6. ✅ Comprehensive integration test suite covering:
+   - `move_tree_to_prefix` (5 tests)
+   - `extract_subtree` (5 tests)
+   - `filter_commits_by_prefix` (3 tests)
+   - `has_subtree_at_prefix` (2 tests)
+   - `prefix_conflicts_with_file` (5 tests)
+   - Roundtrip symmetry test (1 test)
 
-**Critical existing files to reference:**
+**Critical existing files referenced:**
 - [lib/src/git.rs](lib/src/git.rs) - GitFetch, push_updates patterns
 - [lib/src/git_subprocess.rs](lib/src/git_subprocess.rs) - Git subprocess invocation
 
@@ -1006,8 +1028,8 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ## Testing Strategy
 
-### Unit Tests ✅ Partial
-**Implemented (16 tests in library):**
+### Unit Tests ✅ Complete
+**Implemented (16 tests in library source files):**
 - `lib/src/subtree/core.rs`: 3 tests for path joining operations
   - `test_join_paths_both_non_root`
   - `test_join_paths_prefix_root`
@@ -1022,13 +1044,45 @@ if !workspace_command.repo().store().is_git_backend() {
   - Detecting metadata presence (`test_has_metadata*`)
   - Edge cases (empty metadata, other trailers)
 
-**Not yet implemented:**
-- Tree manipulation functions (`move_tree_to_prefix`, `extract_subtree`) - functions exist but no dedicated tests
-- Commit filtering by prefix (`filter_commits_by_prefix`) - function exists but no dedicated tests
-- Prefix validation utilities in CLI (`common.rs`) - functions exist but no dedicated tests
+### Integration Tests ✅ Complete
+**Implemented (21 tests in `lib/tests/test_subtree.rs`, 513 lines):**
 
-### Integration Tests ❌ Not Started
-- Full add/merge/split/push/pull workflows
+**`move_tree_to_prefix` tests (5 tests):**
+- Single file movement to prefix
+- Nested directory structure handling
+- Root prefix error handling (should fail)
+- Empty tree handling
+- Content preservation verification
+
+**`extract_subtree` tests (5 tests):**
+- Single level extraction
+- Nested extraction from deep paths
+- No content at prefix handling
+- Root prefix error (should fail)
+- Content preservation verification
+
+**`filter_commits_by_prefix` tests (3 tests):**
+- Filtering commits that modify specific prefix
+- Empty prefix content handling
+- Root commit handling
+
+**`has_subtree_at_prefix` tests (2 tests):**
+- Subtree exists at prefix
+- Subtree doesn't exist at prefix
+
+**`prefix_conflicts_with_file` tests (5 tests):**
+- File exists at exact prefix path
+- File on ancestor path blocks prefix
+- No conflict when directory exists
+- No conflict with empty/unrelated paths
+- Nested path conflict detection
+
+**Roundtrip test (1 test):**
+- `move_tree_to_prefix` + `extract_subtree` symmetry verification
+
+### Not Yet Implemented
+- CLI command integration tests (blocked on CLI implementation)
+- Full add/merge/split/push/pull workflow tests
 - Squash mode operations
 - Rejoin operations
 - Multi-level nested subtrees

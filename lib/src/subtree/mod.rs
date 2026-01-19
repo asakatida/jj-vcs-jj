@@ -32,18 +32,44 @@
 //! - [`extract_subtree`] - Extract entries at a prefix to root level
 //! - [`filter_commits_by_prefix`] - Identify commits that modify a subtree path
 //!
+//! # Backend Abstraction
+//!
+//! Remote operations (fetch/push) are abstracted through the [`SubtreeBackend`]
+//! trait:
+//!
+//! - [`GitSubtreeBackend`] - Git implementation using subprocess
+//! - [`LocalSubtreeBackend`] - Fallback for non-Git backends
+//! - [`create_subtree_backend`] - Factory function to create appropriate
+//!   backend
+//!
 //! # Metadata
 //!
 //! Subtree operations track metadata using Git-compatible trailers in commit
 //! descriptions. See [`SubtreeMetadata`] for details.
 
+mod backend;
 mod core;
+pub mod git_backend;
 mod metadata;
 
-pub use self::core::SubtreeError;
+// Core operations (backend-agnostic)
 pub use self::core::extract_subtree;
 pub use self::core::filter_commits_by_prefix;
 pub use self::core::has_subtree_at_prefix;
 pub use self::core::move_tree_to_prefix;
 pub use self::core::prefix_conflicts_with_file;
+pub use self::core::SubtreeError;
+
+// Backend abstraction
+pub use self::backend::create_subtree_backend;
+pub use self::backend::BoxFuture;
+pub use self::backend::LocalSubtreeBackend;
+pub use self::backend::SubtreeBackend;
+pub use self::backend::SubtreeBackendError;
+pub use self::backend::SubtreeBackendResult;
+
+// Git backend
+pub use self::git_backend::GitSubtreeBackend;
+
+// Metadata
 pub use self::metadata::SubtreeMetadata;
