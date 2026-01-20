@@ -46,7 +46,7 @@ The subtree feature is in **active development**. The library layer is essential
   - `has_subtree_at_prefix()` - check if content exists at a prefix
   - `prefix_conflicts_with_file()` - detect file conflicts at prefix path
 - Metadata parsing/writing with bidirectional Git compatibility:
-  - Reads both `git-subtree-*` (jj) and `git-subtree-*` (git) trailer formats
+  - Reads `git-subtree-*` trailer formats
   - Writes `git-subtree-*` format for new commits
 - CLI validation utilities for prefix path validation:
   - `parse_prefix()` - validates and converts prefix string to RepoPathBuf
@@ -474,7 +474,7 @@ pub struct SubtreeMetadata {
 
 impl SubtreeMetadata {
     /// Parse metadata from commit description
-    /// Recognizes both jj format (git-subtree-*) and git-subtree format (git-subtree-*)
+    /// Recognizes git-subtree format (git-subtree-*)
     pub fn parse(description: &str) -> Self;
 
     /// Format metadata as trailer lines (jj format)
@@ -888,7 +888,7 @@ if !workspace_command.repo().store().is_git_backend() {
 5. ✅ `has_subtree_at_prefix()` - checks if content exists at a prefix
 6. ✅ `prefix_conflicts_with_file()` - detects file conflicts at prefix path
 7. ✅ `SubtreeMetadata` struct with `parse()`, `format_trailers()`, `add_to_description()`, `has_metadata()`
-8. ✅ Bidirectional git-subtree compatibility (reads both `git-subtree-*` and `git-subtree-*` formats)
+8. ✅ Bidirectional git-subtree compatibility (reads `git-subtree-*` formats)
 9. ✅ `SubtreeError` enum for error handling
 10. ✅ Unit tests: 16 tests (3 in core.rs, 13 in metadata.rs)
 11. ✅ CLI utilities in `common.rs`:
