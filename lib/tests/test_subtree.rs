@@ -14,6 +14,12 @@
 
 //! Tests for subtree operations.
 
+use jj_lib::subtree::LocalSubtreeBackend;
+use jj_lib::subtree::SubtreeBackend;
+use jj_lib::subtree::SubtreeBackendError;
+use jj_lib::subtree::create_subtree_backend;
+use testutils::TestRepoBackend;
+
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::RepoPath;
@@ -507,10 +513,6 @@ fn test_roundtrip_move_and_extract() {
     assert!(has_subtree_at_prefix(&extracted_tree, repo_path("src/lib.rs")).unwrap());
     assert!(has_subtree_at_prefix(&extracted_tree, repo_path("README.md")).unwrap());
 }
-
-// =============================================================================
-// Tests for Backend
-// =============================================================================
 
 #[test]
 fn test_create_backend_for_git_repo() {
