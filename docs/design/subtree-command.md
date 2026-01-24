@@ -20,14 +20,16 @@ The subtree feature is in **active development**. The library layer with core tr
 |-----------|--------|-------|
 | CLI command dispatcher | ✅ Complete | `cli/src/commands/subtree/mod.rs` |
 | CLI argument definitions | ✅ Complete | All 5 commands have full clap argument structures |
-| CLI common utilities | ✅ Complete | `cli/src/commands/subtree/common.rs` - prefix validation |
+| CLI common utilities | ✅ Complete | `cli/src/commands/subtree/common.rs` - prefix validation (88 lines) |
 | CLI command implementations | ⏳ Stub only | Commands return placeholder warning messages |
-| Library module structure | ✅ Complete | `lib/src/subtree/mod.rs` - public API exports |
-| Core tree operations | ✅ Complete | `lib/src/subtree/core.rs` - 6 functions implemented |
-| Metadata handling | ✅ Complete | `lib/src/subtree/metadata.rs` - bidirectional git compatibility |
+| Library module structure | ✅ Complete | `lib/src/subtree/mod.rs` - public API exports (49 lines) |
+| Core tree operations | ✅ Complete | `lib/src/subtree/core.rs` - 6 functions implemented (325 lines) |
+| Metadata handling | ✅ Complete | `lib/src/subtree/metadata.rs` - bidirectional git compatibility (345 lines) |
 | Backend abstraction | ❌ Not started | `SubtreeBackend` trait for remote operations |
-| Unit tests | ✅ 16 tests | Core path operations and metadata handling |
+| Unit tests | ✅ 16 tests | 3 in core.rs (path joining), 13 in metadata.rs (parsing/formatting) |
 | Integration tests | ❌ Not started | No dedicated test suite |
+
+**Total implementation: 1,256 lines across 10 files** (719 lines library, 537 lines CLI)
 
 ### What Works Today
 
@@ -43,7 +45,10 @@ The subtree feature is in **active development**. The library layer with core tr
 - Metadata parsing/writing with bidirectional Git compatibility:
   - Reads both `Subtree-*` (jj) and `git-subtree-*` (git) trailer formats
   - Writes `Subtree-*` format for new commits
-- CLI validation utilities for prefix path validation
+- CLI validation utilities for prefix path validation:
+  - `parse_prefix()` - validates and converts prefix string to RepoPathBuf
+  - `validate_prefix_for_add()` - calls `prefix_conflicts_with_file()` from library
+  - `validate_prefix_exists()` - calls `has_subtree_at_prefix()` from library
 
 ### What Users Must Do Instead
 
@@ -222,18 +227,18 @@ If both sides modified `vendor/lib/bug.rs`, a conflict is created and can be res
 
 ```
 cli/src/commands/subtree/
-├── mod.rs              # Command dispatcher (✅ complete)
-├── add.rs              # Add subcommand (⏳ args complete, handler stub)
-├── merge.rs            # Merge subcommand (⏳ args complete, handler stub)
-├── split.rs            # Split subcommand (⏳ args complete, handler stub)
-├── pull.rs             # Pull subcommand (⏳ args complete, handler stub)
-├── push.rs             # Push subcommand (⏳ args complete, handler stub)
-└── common.rs           # Shared utilities (✅ complete)
+├── mod.rs              # Command dispatcher (✅ complete, 67 lines)
+├── add.rs              # Add subcommand (⏳ args complete, handler stub, 82 lines)
+├── merge.rs            # Merge subcommand (⏳ args complete, handler stub, 68 lines)
+├── split.rs            # Split subcommand (⏳ args complete, handler stub, 92 lines)
+├── pull.rs             # Pull subcommand (⏳ args complete, handler stub, 67 lines)
+├── push.rs             # Push subcommand (⏳ args complete, handler stub, 73 lines)
+└── common.rs           # Shared utilities (✅ complete, 88 lines)
 
 lib/src/subtree/
-├── mod.rs              # Public API and re-exports (✅ complete)
-├── core.rs             # Core subtree logic - backend agnostic (✅ complete)
-├── metadata.rs         # Commit metadata parsing/writing (✅ complete)
+├── mod.rs              # Public API and re-exports (✅ complete, 49 lines)
+├── core.rs             # Core subtree logic - backend agnostic (✅ complete, 325 lines)
+├── metadata.rs         # Commit metadata parsing/writing (✅ complete, 345 lines)
 ├── backend.rs          # Backend trait and implementations (❌ not started)
 └── git_backend.rs      # Git-specific remote operations (❌ not started)
 ```
@@ -866,9 +871,9 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 1: Core Library Infrastructure ✅ Complete
 **Files created:**
-- `lib/src/subtree/mod.rs` - Module declaration and public API exports
-- `lib/src/subtree/core.rs` - Backend-agnostic tree operations (317 lines)
-- `lib/src/subtree/metadata.rs` - Metadata parsing and writing (348 lines)
+- `lib/src/subtree/mod.rs` - Module declaration and public API exports (49 lines)
+- `lib/src/subtree/core.rs` - Backend-agnostic tree operations (325 lines)
+- `lib/src/subtree/metadata.rs` - Metadata parsing and writing (345 lines)
 - `cli/src/commands/subtree/common.rs` - Prefix validation utilities (88 lines)
 
 **Implemented functionality:**
@@ -881,8 +886,11 @@ if !workspace_command.repo().store().is_git_backend() {
 7. ✅ `SubtreeMetadata` struct with `parse()`, `format_trailers()`, `add_to_description()`, `has_metadata()`
 8. ✅ Bidirectional git-subtree compatibility (reads both `Subtree-*` and `git-subtree-*` formats)
 9. ✅ `SubtreeError` enum for error handling
-10. ✅ Unit tests: 16 tests covering path operations and metadata parsing
-11. ✅ CLI utilities: `parse_prefix()`, `validate_prefix_for_add()`, `validate_prefix_exists()`
+10. ✅ Unit tests: 16 tests (3 in core.rs, 13 in metadata.rs)
+11. ✅ CLI utilities in `common.rs`:
+    - `parse_prefix()` - validates prefix string, rejects empty/root paths
+    - `validate_prefix_for_add()` - wraps `prefix_conflicts_with_file()` with user-friendly errors
+    - `validate_prefix_exists()` - wraps `has_subtree_at_prefix()` with user-friendly errors
 
 **Critical existing files referenced:**
 - [lib/src/merged_tree.rs](lib/src/merged_tree.rs) - MergedTreeBuilder pattern
@@ -906,9 +914,9 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 3: Add Command ⏳ CLI Args Only
 **Files to modify:**
-- `cli/src/commands/subtree/add.rs` - Full implementation
+- `cli/src/commands/subtree/add.rs` - Full implementation (currently 82 lines)
 
-**Current status:** CLI argument structure is complete. Command handler returns placeholder warning. Library functions are ready to use.
+**Current status:** CLI argument structure is complete (SubtreeAddArgs with 7 fields). Command handler returns placeholder warning. Library functions are ready to use.
 
 **Implementation:**
 1. Wire handler to use `common::parse_prefix()` and `common::validate_prefix_for_add()`
@@ -924,9 +932,9 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 4: Merge Command ⏳ CLI Args Only
 **Files to modify:**
-- `cli/src/commands/subtree/merge.rs` - Full implementation
+- `cli/src/commands/subtree/merge.rs` - Full implementation (currently 68 lines)
 
-**Current status:** CLI argument structure is complete. Command handler returns placeholder warning. Library functions are ready to use.
+**Current status:** CLI argument structure is complete (SubtreeMergeArgs with 5 fields). Command handler returns placeholder warning. Library functions are ready to use.
 
 **Implementation:**
 1. Wire handler to use `common::parse_prefix()` and `common::validate_prefix_exists()`
@@ -942,9 +950,9 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 5: Split Command ⏳ CLI Args Only
 **Files to modify:**
-- `cli/src/commands/subtree/split.rs` - Full implementation
+- `cli/src/commands/subtree/split.rs` - Full implementation (currently 92 lines)
 
-**Current status:** CLI argument structure is complete (most complex of all commands). Command handler returns placeholder warning. Library functions are ready to use.
+**Current status:** CLI argument structure is complete (SubtreeSplitArgs with 10 fields - most complex of all commands). Command handler returns placeholder warning. Library functions are ready to use.
 
 **Implementation:**
 1. Wire handler to use `common::parse_prefix()` and `common::validate_prefix_exists()`
@@ -972,10 +980,10 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ### Phase 6: Pull and Push Commands ⏳ CLI Args Only
 **Files to modify:**
-- `cli/src/commands/subtree/pull.rs` - Full implementation
-- `cli/src/commands/subtree/push.rs` - Full implementation
+- `cli/src/commands/subtree/pull.rs` - Full implementation (currently 67 lines)
+- `cli/src/commands/subtree/push.rs` - Full implementation (currently 73 lines)
 
-**Current status:** CLI argument structures are complete for both commands. Command handlers return placeholder warnings.
+**Current status:** CLI argument structures are complete for both commands (SubtreePullArgs with 5 fields, SubtreePushArgs with 6 fields). Command handlers return placeholder warnings.
 
 **Implementation:**
 1. Implement pull (fetch + merge wrapper)
@@ -1001,19 +1009,23 @@ if !workspace_command.repo().store().is_git_backend() {
 ### Unit Tests ✅ Partial
 **Implemented (16 tests in library):**
 - `lib/src/subtree/core.rs`: 3 tests for path joining operations
+  - `test_join_paths_both_non_root`
+  - `test_join_paths_prefix_root`
+  - `test_join_paths_suffix_root`
 - `lib/src/subtree/metadata.rs`: 13 tests covering:
-  - Parsing jj format trailers
-  - Parsing git-subtree format (compatibility)
-  - Parsing all field types
-  - Handling commits without metadata
-  - Formatting trailers
-  - Adding metadata to descriptions
-  - Detecting metadata presence
+  - Parsing jj format trailers (`test_parse_*`)
+  - Parsing git-subtree format for compatibility (`test_parse_git_subtree_format`)
+  - Parsing all field types (`test_parse_all_fields`)
+  - Handling commits without metadata (`test_parse_no_metadata`)
+  - Formatting trailers (`test_format_trailers*`)
+  - Adding metadata to descriptions (`test_add_to_description*`)
+  - Detecting metadata presence (`test_has_metadata*`)
   - Edge cases (empty metadata, other trailers)
 
 **Not yet implemented:**
-- Tree manipulation functions (prefix adding/removing) - functions exist but no dedicated tests
-- Commit filtering by prefix - function exists but no dedicated tests
+- Tree manipulation functions (`move_tree_to_prefix`, `extract_subtree`) - functions exist but no dedicated tests
+- Commit filtering by prefix (`filter_commits_by_prefix`) - function exists but no dedicated tests
+- Prefix validation utilities in CLI (`common.rs`) - functions exist but no dedicated tests
 
 ### Integration Tests ❌ Not Started
 - Full add/merge/split/push/pull workflows
@@ -1378,11 +1390,11 @@ This design addresses the following user needs:
 The implementation interacts with these files:
 
 **Subtree-Specific (New):**
-- [lib/src/subtree/mod.rs](../../lib/src/subtree/mod.rs) - ✅ Public API exports
-- [lib/src/subtree/core.rs](../../lib/src/subtree/core.rs) - ✅ Core tree operations (317 lines)
-- [lib/src/subtree/metadata.rs](../../lib/src/subtree/metadata.rs) - ✅ Metadata handling (348 lines)
-- [cli/src/commands/subtree/mod.rs](../src/commands/subtree/mod.rs) - ✅ Command dispatcher
-- [cli/src/commands/subtree/common.rs](../src/commands/subtree/common.rs) - ✅ Prefix validation utilities
+- [lib/src/subtree/mod.rs](../../lib/src/subtree/mod.rs) - ✅ Public API exports (49 lines)
+- [lib/src/subtree/core.rs](../../lib/src/subtree/core.rs) - ✅ Core tree operations (325 lines)
+- [lib/src/subtree/metadata.rs](../../lib/src/subtree/metadata.rs) - ✅ Metadata handling (345 lines)
+- [cli/src/commands/subtree/mod.rs](../src/commands/subtree/mod.rs) - ✅ Command dispatcher (67 lines)
+- [cli/src/commands/subtree/common.rs](../src/commands/subtree/common.rs) - ✅ Prefix validation utilities (88 lines)
 
 **Core Library (Dependencies):**
 - [lib/src/merged_tree.rs](../../lib/src/merged_tree.rs) - Tree manipulation, MergedTreeBuilder
