@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod add;
-mod common;
 mod merge;
 mod pull;
 mod push;
