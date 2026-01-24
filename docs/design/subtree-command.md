@@ -12,7 +12,30 @@ Unlike Git submodules, subtrees do not require special metadata files (like `.gi
 
 ## State of the Feature
 
-Jujutsu currently has placeholder implementations for subtree commands (in `cli/src/commands/subtree/`) but no functional implementation. Users who need to include external repositories as subdirectories must either:
+### Current Implementation Status
+
+The subtree feature is in **early development**. The CLI command structure is complete, but core functionality has not been implemented yet.
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| CLI command dispatcher | ✅ Complete | `cli/src/commands/subtree/mod.rs` |
+| CLI argument definitions | ✅ Complete | All 5 commands have full clap argument structures |
+| CLI command implementations | ⏳ Stub only | Commands return placeholder warning messages |
+| Library modules (`lib/src/subtree/`) | ❌ Not started | Directory does not exist |
+| Core tree operations | ❌ Not started | `move_tree_to_prefix()`, `extract_subtree()` |
+| Backend abstraction | ❌ Not started | `SubtreeBackend` trait |
+| Metadata handling | ❌ Not started | Trailer parsing/writing |
+| Test infrastructure | ❌ Not started | No test files exist |
+
+### What Works Today
+
+- Running `jj subtree <command>` displays a placeholder message indicating the feature is not yet implemented
+- All command-line arguments are properly parsed and validated
+- Help text is available via `jj subtree --help` and `jj subtree <command> --help`
+
+### What Users Must Do Instead
+
+Users who need to include external repositories as subdirectories must currently:
 
 - Use Git submodules (requires colocated workspace, adds complexity)
 - Manually copy/paste code (loses history, complicates updates)
@@ -836,7 +859,19 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ## Implementation Phases
 
-### Phase 1: Core Library Infrastructure
+### Phase Overview
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| Phase 1 | Core Library Infrastructure | ❌ Not started |
+| Phase 2 | Backend Abstraction | ❌ Not started |
+| Phase 3 | Add Command | ⏳ CLI args only |
+| Phase 4 | Merge Command | ⏳ CLI args only |
+| Phase 5 | Split Command | ⏳ CLI args only |
+| Phase 6 | Pull and Push Commands | ⏳ CLI args only |
+| Phase 7 | Advanced Features | ❌ Not started |
+
+### Phase 1: Core Library Infrastructure ❌ Not Started
 **Files to create:**
 - `lib/src/subtree/mod.rs` - Module declaration and public API
 - `lib/src/subtree/core.rs` - Backend-agnostic tree operations
@@ -855,7 +890,7 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher usage
 - [lib/src/repo_path.rs](lib/src/repo_path.rs) - Path manipulation
 
-### Phase 2: Backend Abstraction
+### Phase 2: Backend Abstraction ❌ Not Started
 **Files to create:**
 - `lib/src/subtree/backend.rs` - Backend trait definition
 - `lib/src/subtree/git_backend.rs` - Git remote operations
@@ -870,9 +905,11 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/git.rs](lib/src/git.rs) - GitFetch, push_updates patterns
 - [lib/src/git_subprocess.rs](lib/src/git_subprocess.rs) - Git subprocess invocation
 
-### Phase 3: Add Command
+### Phase 3: Add Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/add.rs` - Full implementation
+
+**Current status:** CLI argument structure is complete. Command handler returns placeholder warning.
 
 **Implementation:**
 1. Implement `subtree add` for local commits (backend-agnostic)
@@ -885,9 +922,11 @@ if !workspace_command.repo().store().is_git_backend() {
 - [cli/src/commands/git/fetch.rs](cli/src/commands/git/fetch.rs) - Fetch patterns
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - restore_tree pattern
 
-### Phase 4: Merge Command
+### Phase 4: Merge Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/merge.rs` - Full implementation
+
+**Current status:** CLI argument structure is complete. Command handler returns placeholder warning.
 
 **Implementation:**
 1. Implement basic merge from local commit
@@ -899,9 +938,11 @@ if !workspace_command.repo().store().is_git_backend() {
 **Critical existing files to reference:**
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - merge_commit_trees
 
-### Phase 5: Split Command
+### Phase 5: Split Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/split.rs` - Full implementation
+
+**Current status:** CLI argument structure is complete (most complex of all commands). Command handler returns placeholder warning.
 
 **Implementation:**
 1. Implement basic split logic with full history (default `--no-squash`)
@@ -929,10 +970,12 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - CommitRewriter, restore_tree pattern
 - [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher for path filtering
 
-### Phase 6: Pull and Push Commands
+### Phase 6: Pull and Push Commands ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/pull.rs` - Full implementation
 - `cli/src/commands/subtree/push.rs` - Full implementation
+
+**Current status:** CLI argument structures are complete for both commands. Command handlers return placeholder warnings.
 
 **Implementation:**
 1. Implement pull (fetch + merge wrapper)
@@ -944,7 +987,7 @@ if !workspace_command.repo().store().is_git_backend() {
 - [cli/src/commands/git/push.rs](cli/src/commands/git/push.rs) - Push patterns
 - [lib/src/git.rs](lib/src/git.rs) - push_updates, GitRefUpdate
 
-### Phase 7: Advanced Features
+### Phase 7: Advanced Features ❌ Not Started
 **Implementation:**
 1. Implement `--onto` for split (custom base)
 2. Implement `--ignore-joins` (force full history)
@@ -1340,24 +1383,31 @@ The implementation will primarily interact with these existing files:
 
 ## Success Criteria
 
-1. ✅ All git subtree commands have jj equivalents
-2. ✅ Can successfully import external repositories as subtrees (Git backend)
-3. ✅ Can split subtree history and push to external repo (Git backend)
-4. ✅ Can pull updates from external repo and merge into subtree (Git backend)
-5. ✅ Core operations work on non-Git backends (add/merge/split with local commits)
-6. ✅ Handles conflicts gracefully using jj's native conflict resolution
-7. ✅ Repeated splits produce deterministic results
-8. ✅ Metadata tracking works correctly (trailers in commit descriptions)
-9. ✅ Squash mode is default for add/merge/pull and works as expected
-10. ✅ Split defaults to full history; `--squash` option works for single-commit output
-11. ✅ User can explicitly choose empty commit handling (--keep-empty / --skip-empty)
-12. ✅ Comprehensive test coverage (>80% for new code)
-13. ✅ Documentation with examples for all commands
-14. ✅ Bidirectional git-subtree compatibility verified through test suite
-15. ✅ Metadata scanning correctly identifies split/join points
-16. ✅ `--ignore-joins` forces complete history regeneration
-17. ✅ Both jj and git-subtree metadata formats are recognized
-18. ✅ Native conflict resolution preserves conflicts through subtree operations
+**Legend:** ✅ Complete | ⏳ In Progress | ❌ Not Started
+
+### CLI Structure
+1. ✅ All git subtree commands have jj equivalents (CLI argument definitions complete)
+
+### Core Functionality (All ❌ Not Started)
+2. ❌ Can successfully import external repositories as subtrees (Git backend)
+3. ❌ Can split subtree history and push to external repo (Git backend)
+4. ❌ Can pull updates from external repo and merge into subtree (Git backend)
+5. ❌ Core operations work on non-Git backends (add/merge/split with local commits)
+6. ❌ Handles conflicts gracefully using jj's native conflict resolution
+7. ❌ Repeated splits produce deterministic results
+8. ❌ Metadata tracking works correctly (trailers in commit descriptions)
+9. ❌ Squash mode is default for add/merge/pull and works as expected
+10. ❌ Split defaults to full history; `--squash` option works for single-commit output
+11. ❌ User can explicitly choose empty commit handling (--keep-empty / --skip-empty)
+
+### Quality & Compatibility (All ❌ Not Started)
+12. ❌ Comprehensive test coverage (>80% for new code)
+13. ❌ Documentation with examples for all commands
+14. ❌ Bidirectional git-subtree compatibility verified through test suite
+15. ❌ Metadata scanning correctly identifies split/join points
+16. ❌ `--ignore-joins` forces complete history regeneration
+17. ❌ Both jj and git-subtree metadata formats are recognized
+18. ❌ Native conflict resolution preserves conflicts through subtree operations
 
 ## Git Subtree Interoperability
 
