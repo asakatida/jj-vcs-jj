@@ -665,24 +665,26 @@ Subtree operations use tree manipulation patterns implemented in `lib/src/subtre
 ```rust
 // Moving tree into prefix - lib/src/subtree/core.rs
 pub fn move_tree_to_prefix(
-    tree: &MergedTree,
+    store: &Arc<Store>,
+    source_tree: &MergedTree,
     prefix: &RepoPath,
 ) -> Result<MergedTree, SubtreeError>
 
 // Extracting subtree from prefix - lib/src/subtree/core.rs
 pub fn extract_subtree(
-    tree: &MergedTree,
+    store: &Arc<Store>,
+    source_tree: &MergedTree,
     prefix: &RepoPath,
 ) -> Result<MergedTree, SubtreeError>
 
 // Check if content exists at prefix - lib/src/subtree/core.rs
-pub fn has_subtree_at_prefix(tree: &MergedTree, prefix: &RepoPath) -> bool
+pub fn has_subtree_at_prefix(tree: &MergedTree, prefix: &RepoPath) -> Result<bool, SubtreeError>
 
 // Check for file conflicts at prefix path - lib/src/subtree/core.rs
 pub fn prefix_conflicts_with_file(
     tree: &MergedTree,
     prefix: &RepoPath,
-) -> Option<RepoPathBuf>
+) -> Result<Option<RepoPathBuf>, SubtreeError>
 ```
 
 **Commit Filtering Function (Implemented):**
@@ -690,7 +692,7 @@ pub fn prefix_conflicts_with_file(
 // Filter commits by prefix modification - lib/src/subtree/core.rs
 pub async fn filter_commits_by_prefix(
     repo: &dyn Repo,
-    commits: &[Commit],
+    commits: Vec<Commit>,
     prefix: &RepoPath,
 ) -> Result<Vec<(Commit, bool)>, SubtreeError>
 ```
