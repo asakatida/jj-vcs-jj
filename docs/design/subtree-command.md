@@ -65,7 +65,7 @@ The subtree command will be implemented as a subcommand of `jj`, similar to how 
    - `Subtree-mainline: <commit-id>` - Links split commits to original commits
    - Auto-detected for incremental operations; can be disabled with `--no-metadata`
 
-7. **Default Squash Mode**: Squash is the default for add/merge/pull operations for cleaner history. Users can opt out with `--no-squash` to preserve full history. Split operations always produce full history.
+7. **Default Squash Mode**: Squash is the default for add/merge/pull operations for cleaner history. Users can opt out with `--no-squash` to preserve full history. Split defaults to full history (`--no-squash`); users can opt into `--squash` for single-commit output.
 
 8. **Empty Commit Handling**: Require explicit user choice via `--keep-empty` or `--skip-empty` flags for split command to make behavior transparent and prevent surprises.
 
@@ -180,6 +180,14 @@ pub struct SubtreeSplitOptions {
     /// Skip commits that don't modify the subtree
     #[arg(long, conflicts_with = "keep_empty")]
     pub skip_empty: bool,
+
+    /// Combine all subtree changes into a single commit
+    #[arg(long, conflicts_with = "no_squash")]
+    pub squash: bool,
+
+    /// Preserve full commit history in split (default behavior)
+    #[arg(long, conflicts_with = "squash")]
+    pub no_squash: bool,
 }
 ```
 
@@ -373,6 +381,44 @@ The `split` operation extracts commits that affect only the subtree and creates 
 - Optimizing with `--ignore-joins` vs auto-detecting previous splits
 - In squash mode: combining commit messages meaningfully while preserving authorship info
 
+#### Split Base Detection
+
+The split operation must determine where to start extracting history. Two strategies are available:
+
+**Strategy 1: Metadata Scanning (Default)**
+
+Scan commit history for subtree metadata trailers to find previous join/split points:
+- Look for `Subtree-split` or `git-subtree-split` trailers (previous rejoin markers)
+- Look for `Subtree-mainline` or `git-subtree-mainline` trailers
+- Match `Subtree-dir`/`git-subtree-dir` to current prefix
+
+When metadata is found, split incrementally from the last join point.
+
+**Strategy 2: Native Rewriting Fallback**
+
+When no metadata exists (first split, or metadata disabled):
+- Walk commit ancestors from HEAD
+- Use `PrefixMatcher` with `diff_stream()` to find commits modifying subtree
+- Identify first commit that introduced content at the prefix path
+- Use its parent as the split base
+
+**`--ignore-joins` Flag**
+
+Forces complete history regeneration by bypassing metadata scanning:
+- Use when previous split/rejoin metadata is corrupt
+- Use when full independent history is needed for new repository
+- Use when mixed git-subtree/jj operations produced inconsistent state
+
+**Metadata Recognition (Bidirectional Compatibility)**
+
+Both jj and git-subtree trailer formats are recognized:
+
+| jj format | git-subtree format |
+|-----------|-------------------|
+| `Subtree-dir:` | `git-subtree-dir:` |
+| `Subtree-split:` | `git-subtree-split:` |
+| `Subtree-mainline:` | `git-subtree-mainline:` |
+
 #### Pull Operation
 
 Fetch from remote and merge into subtree (wrapper around fetch + merge).
@@ -507,6 +553,41 @@ Subtree operations may create directory conflicts. Jujutsu's conflict resolution
 - Conflicts between subtree and main repository content
 - Native conflict markers preserved through operations
 
+#### Divergent History Handling
+
+When subtree operations encounter divergent history (concurrent changes in mainline and upstream), jj's native conflict resolution model is used.
+
+**Scenarios:**
+1. **Concurrent modifications**: Both mainline and upstream modified subtree files
+2. **Subtree vs mainline conflicts**: Changes at subtree boundary conflict with mainline
+3. **Multiple split sources**: Merging histories split from different points
+
+**Resolution Approach:**
+
+jj represents conflicts as first-class tree values rather than requiring immediate resolution. Subtree merge operations preserve these conflicts:
+
+1. Perform 3-way merge using `MergedTree::merge()`
+2. Conflicts stored in tree with labels: "current subtree", "incoming changes", "common ancestor"
+3. Users resolve via standard `jj resolve` workflow
+
+**User Workflow:**
+```bash
+# Merge may create conflicts
+jj subtree merge -P vendor/lib upstream-commit
+
+# View conflicts
+jj status
+# Conflicted: vendor/lib/config.rs
+
+# Resolve interactively
+jj resolve vendor/lib/config.rs
+
+# Complete merge
+jj commit -m "Merge upstream with resolved conflicts"
+```
+
+Conflict markers follow jj's standard format, with labels indicating subtree context.
+
 ### User Interface
 
 The command will follow Jujutsu's CLI conventions:
@@ -593,18 +674,30 @@ The command will follow Jujutsu's CLI conventions:
 - `cli/src/commands/subtree/split.rs` - Full implementation
 
 **Implementation:**
-1. Implement basic split logic with full history (no --rejoin, no --squash)
+1. Implement basic split logic with full history (default `--no-squash`)
 2. Add commit filtering with `--keep-empty` / `--skip-empty`
-3. Implement synthetic commit creation
+3. Implement synthetic commit creation with determinism guarantees
 4. Implement `--squash` mode for single-commit output
-5. Implement `--branch` option
-6. Handle merge commits properly (in non-squash mode)
-7. Add metadata linking
-8. Add tests for both squash and non-squash modes
+5. Implement metadata scanning for split base detection:
+   - Scan for `Subtree-split`/`Subtree-mainline` trailers
+   - Recognize `git-subtree-*` format for compatibility
+   - Fallback to native diff-based detection
+6. Implement `--ignore-joins` to bypass metadata scanning
+7. Implement `--branch` option
+8. Implement `--rejoin` for merging synthetic history back
+9. Handle merge commits properly (in non-squash mode)
+10. Add metadata linking (Subtree-mainline trailers)
+11. Add tests for:
+    - Squash vs non-squash modes
+    - Metadata scanning accuracy
+    - `--ignore-joins` behavior
+    - Deterministic commit ID generation
+    - Git-subtree bidirectional interoperability
 
 **Critical existing files to reference:**
-- [lib/src/commit_builder.rs](lib/src/commit_builder.rs) - CommitBuilder pattern
-- [lib/src/rewrite.rs](lib/src/rewrite.rs) - CommitRewriter pattern
+- [lib/src/commit_builder.rs](lib/src/commit_builder.rs) - CommitBuilder, deterministic commits
+- [lib/src/rewrite.rs](lib/src/rewrite.rs) - CommitRewriter, restore_tree pattern
+- [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher for path filtering
 
 ### Phase 6: Pull and Push Commands
 **Files to modify:**
@@ -819,7 +912,7 @@ The implementation will primarily interact with these existing files:
 3. ✅ Can split subtree history and push to external repo (Git backend)
 4. ✅ Can pull updates from external repo and merge into subtree (Git backend)
 5. ✅ Core operations work on non-Git backends (add/merge/split with local commits)
-6. ✅ Handles conflicts gracefully using jj's conflict resolution
+6. ✅ Handles conflicts gracefully using jj's native conflict resolution
 7. ✅ Repeated splits produce deterministic results
 8. ✅ Metadata tracking works correctly (trailers in commit descriptions)
 9. ✅ Squash mode is default for add/merge/pull and works as expected
@@ -827,6 +920,11 @@ The implementation will primarily interact with these existing files:
 11. ✅ User can explicitly choose empty commit handling (--keep-empty / --skip-empty)
 12. ✅ Comprehensive test coverage (>80% for new code)
 13. ✅ Documentation with examples for all commands
+14. ✅ Bidirectional git-subtree compatibility verified through test suite
+15. ✅ Metadata scanning correctly identifies split/join points
+16. ✅ `--ignore-joins` forces complete history regeneration
+17. ✅ Both jj and git-subtree metadata formats are recognized
+18. ✅ Native conflict resolution preserves conflicts through subtree operations
 
 ## Git Subtree Interoperability
 
@@ -900,6 +998,60 @@ This ensures users can:
 - Migrate gradually between tools
 - Collaborate with git-only teams on subtree maintenance
 - Use jj in colocated workspaces without compatibility issues
+
+### Bidirectional Compatibility Design
+
+**Design Goal**: Subtrees created by `jj subtree` must be fully maintainable by `git subtree` and vice versa.
+
+#### Compatibility Matrix
+
+| Operation | jj-created subtree with git | git-created subtree with jj |
+|-----------|----------------------------|------------------------------|
+| split     | Supported                  | Supported                    |
+| merge     | Supported                  | Supported                    |
+| pull      | Supported                  | Supported                    |
+| push      | Supported                  | Supported                    |
+
+#### Deterministic Commit ID Generation
+
+For bidirectional compatibility, split commits must be deterministic:
+1. Same input tree + same parent = same commit ID
+2. Repeated splits on unchanged history produce identical commits
+3. Original author and timestamp are preserved (not current time)
+
+This enables `git subtree merge` to recognize jj-split commits as already integrated.
+
+### Extended Validation Test Suite
+
+Additional interop tests to verify bidirectional support:
+
+```bash
+# Test 7: git-subtree can fully maintain jj-created subtree
+jj subtree add -P vendor/lib commit-a
+jj git export
+git subtree pull -P vendor/lib https://example.com/lib.git main
+git subtree split -P vendor/lib -b git-maintained
+git subtree push -P vendor/lib https://example.com/lib.git feature
+# Expected: All operations succeed
+
+# Test 8: jj can fully maintain git-created subtree
+git subtree add -P vendor/other https://example.com/other.git main
+jj git import
+jj subtree pull -P vendor/other https://example.com/other.git main
+jj subtree split -P vendor/other --skip-empty -b jj-maintained
+jj subtree push -P vendor/other https://example.com/other.git feature
+# Expected: All operations succeed
+
+# Test 9: Mixed workflow over time
+# Day 1: Create with jj
+jj subtree add -P lib commit-x
+# Day 2: Colleague uses git
+git subtree pull -P lib https://example.com/lib.git main
+# Day 3: Back to jj
+jj git import
+jj subtree split -P lib --skip-empty
+# Expected: Metadata chain preserved, incremental split works
+```
 
 ## Future Possibilities
 
