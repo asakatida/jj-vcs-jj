@@ -1,18 +1,18 @@
 # Jujutsu Subtree Command
 
-Author: [Your Name]
+Authors: [Asa (Alexis) Katida](mailto:2058304+asakatida@users.noreply.github.com)
 
-## Summary
+This document describes the planned implementation of subtree functionality in Jujutsu.
 
-This design document proposes the implementation of a `jj subtree` command that provides functionality equivalent to Git's `git subtree` command. The subtree feature allows including external repositories as subdirectories within a Jujutsu repository, with the ability to merge changes bidirectionally and extract subtree histories as standalone repositories.
+**Summary:** This design document proposes the implementation of a `jj subtree` command that provides functionality equivalent to Git's `git subtree` command. The subtree feature allows including external repositories as subdirectories within a Jujutsu repository, with the ability to merge changes bidirectionally and extract subtree histories as standalone repositories.
 
 The subtree command will support the core operations: `add`, `merge`, `split`, `pull`, and `push`, enabling workflows where subprojects can be maintained as separate repositories while being integrated into a larger project.
 
-## State of the Feature as of Current Version
+## Objective
 
 Jujutsu currently does not have subtree functionality. Users who need to include external repositories as subdirectories typically use Git submodules or manual copying/pasting of code. This limits interoperability with Git-based workflows and requires users to manage separate repositories manually.
 
-## Prior Work
+## Background
 
 Git's `git subtree` command provides the reference implementation. Key differences in Jujutsu's approach:
 
