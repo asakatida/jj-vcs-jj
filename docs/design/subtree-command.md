@@ -36,6 +36,8 @@ Key differences in Jujutsu's approach:
 - Jujutsu's first-class conflict representation handles subtree merges more gracefully
 - Backend abstraction allows subtree operations on non-Git backends (with local commits)
 
+**Key Concepts:** This document assumes familiarity with jj's [revsets](../revsets.md) for specifying commits, [bookmarks](../glossary.md#bookmark) for naming commits, and [conflict handling](../conflicts.md). Subtree operations create [merge commits](../glossary.md#merge) and may produce [conflicts](../glossary.md#conflict) requiring resolution via `jj resolve`.
+
 ## Goals and Non-Goals
 
 ### Goals
@@ -75,6 +77,87 @@ jj subtree push -P <prefix> <repository> <refspec>
 - `jj subtree split` - Extract subtree history as a new synthetic history suitable for export
 - `jj subtree pull` - Fetch from remote and merge into subtree (wrapper around fetch + merge)
 - `jj subtree push` - Split subtree and push to remote (wrapper around split + push)
+
+### Visual Overview
+
+The following diagrams illustrate the commit graph transformations for each operation.
+
+#### Subtree Add Operation
+
+Before (two separate histories):
+```
+Main repository:          External repository:
+@  abc123 "My app"        ◆  ext456 "Library v1.0"
+│                         │
+◆  root                   ◆  ext-root
+```
+
+After `jj subtree add -P vendor/lib ext456`:
+```
+@  new789 "Add subtree at vendor/lib"
+├─╮
+│ ◆  ext456 "Library v1.0" (squashed, content at vendor/lib/)
+│
+◆  abc123 "My app"
+│
+◆  root
+```
+
+The external content is relocated under the prefix path and merged into the main history.
+
+#### Subtree Split Operation
+
+Before (changes mixed in main history):
+```
+@  def456 "Update library config"      (modifies vendor/lib/config.rs)
+│
+◆  abc123 "Add app feature"            (modifies src/main.rs)
+│
+◆  xyz789 "Initial library import"     (adds vendor/lib/*)
+│
+◆  root
+```
+
+After `jj subtree split -P vendor/lib --skip-empty`:
+```
+Main history (unchanged):     Synthetic history (new):
+@  def456                     ◆  syn002 "Update library config"
+│                             │        (modifies config.rs at root)
+◆  abc123                     │
+│                             ◆  syn001 "Initial library import"
+◆  xyz789                            (files at root, not vendor/lib/)
+│
+◆  root
+```
+
+The split creates a parallel synthetic history with:
+- Only commits that touched the subtree path
+- Files relocated from `vendor/lib/` to repository root
+- Original author/timestamp preserved for determinism
+
+#### Subtree Merge Operation
+
+Before (divergent changes):
+```
+Main repo:                    Upstream:
+@  main123 "Local fix"        ◆  up456 "Upstream fix"
+│  (vendor/lib/bug.rs)        │  (bug.rs)
+│                             │
+◆  base "Shared ancestor"     ◆  base
+```
+
+After `jj subtree merge -P vendor/lib up456`:
+```
+@  merged "Merge upstream into vendor/lib"
+├─╮
+│ ◆  up456 (content at vendor/lib/)
+│
+◆  main123 "Local fix"
+│
+◆  base
+```
+
+If both sides modified `vendor/lib/bug.rs`, a conflict is created and can be resolved with `jj resolve`.
 
 ### Key Design Decisions
 
@@ -905,70 +988,270 @@ if !workspace_command.repo().store().is_git_backend() {
 
 ## Verification Plan
 
-After implementation, verify these end-to-end scenarios:
+After implementation, verify these end-to-end scenarios. Each scenario includes expected state transformations.
 
 ### Scenario 1: Basic Add and Split
-```bash
-# Add external repo as subtree
-jj subtree add -P vendor/lib https://github.com/user/lib.git main
 
-# Make some local changes to the subtree
+**Initial state:**
+```
+@  wc123 (empty working copy)
+│
+◆  root
+```
+
+**Commands and transformations:**
+```bash
+# Step 1: Add external repo as subtree
+jj subtree add -P vendor/lib https://github.com/user/lib.git main
+```
+
+**After add:**
+```
+@  add456 "Add subtree at vendor/lib"
+├─╮     Subtree-dir: vendor/lib
+│ ◆    (squashed external history)
+│
+◆  wc123
+│
+◆  root
+
+Working copy now contains:
+  vendor/lib/README.md
+  vendor/lib/src/lib.rs
+```
+
+```bash
+# Step 2: Make local changes to the subtree
 echo "local change" >> vendor/lib/README.md
 jj commit -m "Update vendored library"
+```
 
-# Split and create bookmark
+**After local change:**
+```
+@  local789 "Update vendored library"
+│
+◆  add456 "Add subtree at vendor/lib"
+├─╮
+...
+```
+
+```bash
+# Step 3: Split and create bookmark
 jj subtree split -P vendor/lib --skip-empty --bookmark vendor-lib-changes
+```
 
-# Verify synthetic commit exists
+**After split:**
+```
+Main history:                  Synthetic history (vendor-lib-changes):
+@  local789                    ◆  syn002 "Update vendored library"
+│                              │         Subtree-mainline: local789
+◆  add456                      │
+├─╮                            ◆  syn001 "Add subtree at vendor/lib"
+...                                      (files at root, not vendor/lib/)
+```
+
+```bash
+# Step 4: Verify synthetic commit exists
 jj log -r vendor-lib-changes
+# Expected: Shows syn002 with files at repository root
 ```
 
 ### Scenario 2: Bidirectional Sync
+
+**Initial state** (after Scenario 1):
+```
+@  local789 "Update vendored library"
+│
+◆  add456 "Add subtree at vendor/lib"
+```
+
+**Commands and transformations:**
 ```bash
-# Pull updates from upstream
+# Step 1: Pull updates from upstream
 jj subtree pull -P vendor/lib https://github.com/user/lib.git main
+```
 
-# Resolve any conflicts
-jj resolve
+**After pull (with conflict):**
+```
+@  pull123 "Merge upstream into vendor/lib"
+├─╮     Subtree-dir: vendor/lib
+│ ◆    (upstream changes, squashed)
+│
+◆  local789
+│
+...
 
-# Make changes and push back
+jj status output:
+  Conflicted: vendor/lib/README.md
+```
+
+```bash
+# Step 2: Resolve any conflicts
+jj resolve vendor/lib/README.md
+```
+
+**After resolve:**
+```
+@  pull123 "Merge upstream into vendor/lib"
+│        (conflict resolved)
+...
+```
+
+```bash
+# Step 3: Make changes and push back
 echo "contribution" >> vendor/lib/feature.md
 jj commit -m "Add new feature"
+```
+
+**After commit:**
+```
+@  contrib456 "Add new feature"
+│
+◆  pull123 "Merge upstream into vendor/lib"
+│
+...
+```
+
+```bash
+# Step 4: Push to upstream
 jj subtree push -P vendor/lib https://github.com/user/lib.git feature-branch
 ```
 
+**After push:**
+```
+Remote 'feature-branch' now points to synthetic commit with:
+  - feature.md at root (not vendor/lib/feature.md)
+  - README.md with resolved conflict
+  - Subtree-mainline: contrib456
+```
+
 ### Scenario 3: Non-Git Backend
+
+This scenario verifies that core operations work without Git, while remote operations fail gracefully.
+
+**Setup:**
 ```bash
 # Initialize non-Git repo
 jj init --backend=local my-project
+cd my-project
+```
 
-# Add subtree from local commit (should work)
+**Test local operations (should work):**
+```bash
+# Add subtree from local commit
 jj subtree add -P modules/helper some-local-commit
+# Expected: Success, creates merge commit with content at modules/helper/
+```
 
-# Try to pull from remote (should fail gracefully)
+**After add:**
+```
+@  add123 "Add subtree at modules/helper"
+├─╮     Subtree-dir: modules/helper
+│ ◆  some-local-commit
+│
+◆  initial
+```
+
+**Test remote operations (should fail gracefully):**
+```bash
+# Try to pull from remote
 jj subtree pull -P modules/helper https://example.com/repo.git main
-# Expected: Error message explaining remote operations need Git backend
+```
 
-# Merge from local commit (should work)
+**Expected error:**
+```
+Error: Pull operation requires a Git-backed repository.
+Hint: Use 'jj subtree merge' with a local commit instead.
+```
+
+**Test merge from local (should work):**
+```bash
 jj subtree merge -P modules/helper another-local-commit
+# Expected: Success, three-way merge at modules/helper/
 ```
 
 ### Scenario 4: Metadata Tracking
+
+This scenario verifies that metadata trailers are correctly added and can be used for incremental operations.
+
+**Step 1: Add subtree with metadata**
 ```bash
-# Add subtree with metadata
 jj subtree add -P lib external-commit
-
-# Check commit description contains metadata
-jj log -r @ --no-graph -T description
-# Should contain: "Subtree-dir: lib"
-
-# Split with metadata
-jj subtree split -P lib --skip-empty --rejoin
-
-# Check split commit has mainline reference
-jj log --no-graph -T description
-# Should contain: "Subtree-mainline: <original-commit-id>"
 ```
+
+**Verify metadata in commit:**
+```bash
+jj log -r @ --no-graph -T description
+```
+
+**Expected output:**
+```
+Add subtree at lib
+
+Subtree-dir: lib
+```
+
+**Step 2: Split with rejoin**
+```bash
+jj subtree split -P lib --skip-empty --rejoin
+```
+
+**After split with rejoin:**
+```
+@  rejoin789 "Merge split history"
+├─╮     Subtree-split: syn456
+│ │
+│ ◆  syn456 (synthetic history head)
+│ │     Subtree-mainline: add123
+│ │
+◆ │  add123 "Add subtree at lib"
+│/      Subtree-dir: lib
+│
+◆  root
+```
+
+**Verify metadata chain:**
+```bash
+jj log -r 'ancestors(@, 3)' --no-graph -T 'commit_id ++ " " ++ description'
+```
+
+**Expected:** Each commit in the chain contains appropriate metadata trailers linking the histories together.
+
+**Step 3: Incremental split (uses metadata)**
+```bash
+# Make another change
+echo "update" >> lib/file.txt
+jj commit -m "Update lib"
+
+# Split again - should only process new commits
+jj subtree split -P lib --skip-empty
+```
+
+**Expected behavior:** The split operation detects `Subtree-split` metadata and only processes commits after the last rejoin point, avoiding duplicate synthetic commits.
+
+## Open Questions
+
+The following design decisions remain open for discussion:
+
+1. **Empty commit default behavior**: The current design requires users to explicitly choose `--skip-empty` or `--keep-empty` for the split command. Should `--skip-empty` be the default, with `--keep-empty` as the opt-in? This would reduce command verbosity but changes behavior from git-subtree which preserves empty commits by default.
+
+2. **Subtree discovery command**: Should there be a `jj subtree list` command to show all subtrees in a repository by scanning for metadata trailers? This is listed under "Future Possibilities" but may be needed earlier if users frequently work with multiple subtrees.
+
+3. **Binary file handling**: Large binary files in subtrees may cause performance issues during split operations (full history walk). Should there be:
+   - Size warnings when adding subtrees with large binaries?
+   - A `--no-history` option that only imports the current tree state?
+   - Integration with Git LFS for colocated workspaces?
+
+4. **Overlapping prefixes**: If a user attempts to add a subtree at a path that partially overlaps an existing subtree (e.g., adding at `vendor/` when `vendor/lib/` exists), what's the correct behavior? Options:
+   - Error and require explicit resolution
+   - Allow nested subtrees (complex metadata tracking)
+   - Warn but proceed (may cause confusion)
+
+5. **Squash message format**: When squashing multiple commits during add/merge, how should the commit message be formatted? Options:
+   - Single summary line with count: "Add 47 commits from upstream"
+   - Concatenate all messages (potentially very long)
+   - Use first/last commit message only
+   - Prompt user for message (current behavior with `--message`)
 
 ## Alternatives Considered (Why Not?)
 
@@ -1203,6 +1486,37 @@ jj subtree split -P lib --skip-empty
 # Expected: Metadata chain preserved, incremental split works
 ```
 
+## Known Limitations (Phase 1)
+
+The initial implementation will NOT support the following features. These limitations are intentional to reduce scope and may be addressed in future phases based on user demand.
+
+### Not Supported
+
+1. **Nested subtrees**: A subtree cannot contain another subtree. Adding a subtree at `vendor/lib/` and then another at `vendor/lib/sublib/` is not supported. This would require hierarchical metadata tracking and complex prefix resolution.
+
+2. **Subtree rename/move**: Cannot move a subtree from one prefix to another (e.g., `vendor/lib/` to `third_party/lib/`). Users must manually remove the old subtree and re-add at the new location, losing the metadata chain.
+
+3. **Partial imports**: Cannot import only a subdirectory of the external repository. The entire tree from the source commit is imported. For partial imports, users should first create a filtered commit in the source repository.
+
+4. **Multiple remotes per subtree**: Each subtree tracks one upstream location via metadata. Managing multiple upstreams (e.g., fork and original) requires manual coordination or separate subtrees.
+
+5. **Sparse subtree checkout**: No integration with jj's sparse checkout features. Large subtrees are fully materialized in the working copy.
+
+6. **Submodule conversion**: No automatic migration from Git submodules to subtrees. Users must manually extract submodule content and use `jj subtree add`.
+
+7. **Subtree-aware log/diff**: The `jj log` and `jj diff` commands do not have special handling for subtree boundaries. Subtree changes appear as regular file changes.
+
+8. **Cross-backend subtrees**: Cannot add a subtree from a Git repository into a non-Git jj repository's remote. Local commit operations work across backends, but remote operations require Git backend on both sides.
+
+### Workarounds
+
+| Limitation | Workaround |
+|------------|------------|
+| Nested subtrees | Use flat structure with separate prefixes |
+| Subtree rename | Remove and re-add at new prefix |
+| Partial imports | Filter source commit first, then import |
+| Multiple remotes | Use separate subtrees or manual tracking |
+
 ## Future Possibilities
 
 1. **Interactive mode**: Guide users through subtree operations
@@ -1217,3 +1531,29 @@ jj subtree split -P lib --skip-empty
 10. **Integration with Jujutsu's sparse checkout features**: Efficient handling of large subtrees
 11. **Subtree-aware diff and log operations**: Better visualization of subtree changes
 12. **Support for different merge strategies per subtree**: Configurable merge behavior
+
+## References
+
+### Primary Sources
+
+- [Git subtree documentation](https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging#_subtree_merge) - Git's official documentation on subtree merging
+- [git-subtree contrib script](https://github.com/git/git/blob/master/contrib/subtree/git-subtree.sh) - The reference implementation by Avery Pennarun
+- [git-subtree manual page](https://manpages.debian.org/testing/git-man/git-subtree.1.en.html) - Detailed command reference
+
+### Related jj Documentation
+
+- [Revsets](../revsets.md) - Revision specification syntax used in subtree commands
+- [Conflicts](../conflicts.md) - How jj handles merge conflicts (relevant to subtree merge)
+- [Glossary](../glossary.md) - Definitions of jj terminology (bookmark, merge, working copy)
+- [Working Copy](../working-copy.md) - How jj manages the working copy during operations
+
+### Prior Art
+
+- [Mercurial Subrepositories](https://wiki.mercurial-scm.org/Subrepository) - Similar feature in Mercurial (different approach: separate repos)
+- [Git Submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) - Alternative approach using repository references
+- [Google's Piper/CitC](https://research.google/pubs/pub45424/) - Large-scale monorepo management (influences design philosophy)
+
+### Related Discussions
+
+- jj Discord discussions on subtree/submodule support
+- GitHub issues related to monorepo workflows and vendored dependencies
