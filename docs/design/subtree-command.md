@@ -46,7 +46,7 @@ The subtree feature is in **active development**. The library layer is essential
   - `has_subtree_at_prefix()` - check if content exists at a prefix
   - `prefix_conflicts_with_file()` - detect file conflicts at prefix path
 - Metadata parsing/writing with bidirectional Git compatibility:
-  - Reads both `git-subtree-*` (jj) and `git-subtree-*` (git) trailer formats
+  - Reads `git-subtree-*` trailer formats
   - Writes `git-subtree-*` format for new commits
 - CLI validation utilities for prefix path validation:
   - `parse_prefix()` - validates and converts prefix string to RepoPathBuf
@@ -474,7 +474,7 @@ pub struct SubtreeMetadata {
 
 impl SubtreeMetadata {
     /// Parse metadata from commit description
-    /// Recognizes both jj format (git-subtree-*) and git-subtree format (git-subtree-*)
+    /// Recognizes git-subtree format (git-subtree-*)
     pub fn parse(description: &str) -> Self;
 
     /// Format metadata as trailer lines (jj format)
@@ -865,71 +865,13 @@ if !workspace_command.repo().store().is_git_backend() {
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| Phase 1 | Core Library Infrastructure | ✅ Complete |
-| Phase 2 | Backend Abstraction | ✅ Complete |
-| Phase 3 | Add Command | ⏳ CLI args only |
-| Phase 4 | Merge Command | ⏳ CLI args only |
-| Phase 5 | Split Command | ⏳ CLI args only |
-| Phase 6 | Pull and Push Commands | ⏳ CLI args only |
-| Phase 7 | Advanced Features | ❌ Not started |
+| Phase 1 | Add Command | ⏳ CLI args only |
+| Phase 2 | Merge Command | ⏳ CLI args only |
+| Phase 3 | Split Command | ⏳ CLI args only |
+| Phase 4 | Pull and Push Commands | ⏳ CLI args only |
+| Phase 5 | Advanced Features | ❌ Not started |
 
-### Phase 1: Core Library Infrastructure ✅ Complete
-**Files created:**
-- `lib/src/subtree/mod.rs` - Module declaration and public API exports (72 lines)
-- `lib/src/subtree/core.rs` - Backend-agnostic tree operations (325 lines)
-- `lib/src/subtree/metadata.rs` - Metadata parsing and writing (345 lines)
-- `cli/src/commands/subtree/common.rs` - Prefix validation utilities (88 lines)
-
-**Implemented functionality:**
-1. ✅ Subtree module structure created and exported from `lib/src/lib.rs`
-2. ✅ `move_tree_to_prefix()` - relocates all tree entries under a prefix path
-3. ✅ `extract_subtree()` - extracts entries at a prefix to root level
-4. ✅ `filter_commits_by_prefix()` - identifies commits modifying a path (async)
-5. ✅ `has_subtree_at_prefix()` - checks if content exists at a prefix
-6. ✅ `prefix_conflicts_with_file()` - detects file conflicts at prefix path
-7. ✅ `SubtreeMetadata` struct with `parse()`, `format_trailers()`, `add_to_description()`, `has_metadata()`
-8. ✅ Bidirectional git-subtree compatibility (reads both `git-subtree-*` and `git-subtree-*` formats)
-9. ✅ `SubtreeError` enum for error handling
-10. ✅ Unit tests: 16 tests (3 in core.rs, 13 in metadata.rs)
-11. ✅ CLI utilities in `common.rs`:
-    - `parse_prefix()` - validates prefix string, rejects empty/root paths
-    - `validate_prefix_for_add()` - wraps `prefix_conflicts_with_file()` with user-friendly errors
-    - `validate_prefix_exists()` - wraps `has_subtree_at_prefix()` with user-friendly errors
-
-**Critical existing files referenced:**
-- [lib/src/merged_tree.rs](lib/src/merged_tree.rs) - MergedTreeBuilder pattern
-- [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher usage
-- [lib/src/repo_path.rs](lib/src/repo_path.rs) - Path manipulation
-
-### Phase 2: Backend Abstraction ✅ Complete
-**Files created:**
-- `lib/src/subtree/backend.rs` - Backend trait and local implementation (258 lines)
-- `lib/src/subtree/git_backend.rs` - Git remote operations (339 lines)
-- `lib/tests/test_subtree.rs` - Integration tests (595 lines, 25 tests)
-
-**Implemented functionality:**
-1. ✅ `SubtreeBackend` trait with `fetch_remote()`, `push_remote()`, and `supports_remote_operations()`
-2. ✅ `SubtreeBackendError` enum with detailed error types for all failure modes
-3. ✅ `LocalSubtreeBackend` for non-Git backends (returns "not supported" for remote ops)
-4. ✅ `GitSubtreeBackend` with full fetch/push implementation:
-   - Fetch using temporary remotes with isolated ref namespace (`refs/jj/subtree-fetch`)
-   - Push with optional force-push support
-   - Automatic cleanup of temporary remotes on errors
-5. ✅ `create_subtree_backend()` factory function for automatic backend detection
-6. ✅ Comprehensive integration test suite (25 tests) covering:
-   - `move_tree_to_prefix` (5 tests)
-   - `extract_subtree` (5 tests)
-   - `filter_commits_by_prefix` (3 tests)
-   - `has_subtree_at_prefix` (2 tests)
-   - `prefix_conflicts_with_file` (5 tests)
-   - Backend detection and error handling (5 tests)
-   - Roundtrip symmetry test (1 test)
-
-**Critical existing files referenced:**
-- [lib/src/git.rs](lib/src/git.rs) - GitFetch, push_updates patterns
-- [lib/src/git_subprocess.rs](lib/src/git_subprocess.rs) - Git subprocess invocation
-
-### Phase 3: Add Command ⏳ CLI Args Only
+### Add Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/add.rs` - Full implementation (currently 82 lines)
 
@@ -948,7 +890,7 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - restore_tree pattern
 - [lib/src/subtree/git_backend.rs](lib/src/subtree/git_backend.rs) - Git fetch implementation
 
-### Phase 4: Merge Command ⏳ CLI Args Only
+### Merge Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/merge.rs` - Full implementation (currently 68 lines)
 
@@ -966,7 +908,7 @@ if !workspace_command.repo().store().is_git_backend() {
 **Critical existing files to reference:**
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - merge_commit_trees
 
-### Phase 5: Split Command ⏳ CLI Args Only
+### Split Command ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/split.rs` - Full implementation (currently 92 lines)
 
@@ -996,7 +938,7 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/rewrite.rs](lib/src/rewrite.rs) - CommitRewriter, restore_tree pattern
 - [lib/src/matchers.rs](lib/src/matchers.rs) - PrefixMatcher for path filtering
 
-### Phase 6: Pull and Push Commands ⏳ CLI Args Only
+### Pull and Push Commands ⏳ CLI Args Only
 **Files to modify:**
 - `cli/src/commands/subtree/pull.rs` - Full implementation (currently 67 lines)
 - `cli/src/commands/subtree/push.rs` - Full implementation (currently 73 lines)
@@ -1014,7 +956,7 @@ if !workspace_command.repo().store().is_git_backend() {
 - [lib/src/subtree/git_backend.rs](lib/src/subtree/git_backend.rs) - fetch_remote, push_remote implementations
 - [lib/src/git.rs](lib/src/git.rs) - push_updates, GitRefUpdate
 
-### Phase 7: Advanced Features ❌ Not Started
+### Advanced Features ❌ Not Started
 **Implementation:**
 1. Implement `--onto` for split (custom base)
 2. Implement `--ignore-joins` (force full history)
@@ -1636,37 +1578,6 @@ jj subtree split -P lib --skip-empty
 # Expected: Metadata chain preserved, incremental split works
 ```
 
-## Known Limitations (Phase 1)
-
-The initial implementation will NOT support the following features. These limitations are intentional to reduce scope and may be addressed in future phases based on user demand.
-
-### Not Supported
-
-1. **Nested subtrees**: A subtree cannot contain another subtree. Adding a subtree at `vendor/lib/` and then another at `vendor/lib/sublib/` is not supported. This would require hierarchical metadata tracking and complex prefix resolution.
-
-2. **Subtree rename/move**: Cannot move a subtree from one prefix to another (e.g., `vendor/lib/` to `third_party/lib/`). Users must manually remove the old subtree and re-add at the new location, losing the metadata chain.
-
-3. **Partial imports**: Cannot import only a subdirectory of the external repository. The entire tree from the source commit is imported. For partial imports, users should first create a filtered commit in the source repository.
-
-4. **Multiple remotes per subtree**: Each subtree tracks one upstream location via metadata. Managing multiple upstreams (e.g., fork and original) requires manual coordination or separate subtrees.
-
-5. **Sparse subtree checkout**: No integration with jj's sparse checkout features. Large subtrees are fully materialized in the working copy.
-
-6. **Submodule conversion**: No automatic migration from Git submodules to subtrees. Users must manually extract submodule content and use `jj subtree add`.
-
-7. **git-subtree-aware log/diff**: The `jj log` and `jj diff` commands do not have special handling for subtree boundaries. Subtree changes appear as regular file changes.
-
-8. **Cross-backend subtrees**: Cannot add a subtree from a Git repository into a non-Git jj repository's remote. Local commit operations work across backends, but remote operations require Git backend on both sides.
-
-### Workarounds
-
-| Limitation | Workaround |
-|------------|------------|
-| Nested subtrees | Use flat structure with separate prefixes |
-| Subtree rename | Remove and re-add at new prefix |
-| Partial imports | Filter source commit first, then import |
-| Multiple remotes | Use separate subtrees or manual tracking |
-
 ## Future Possibilities
 
 1. **Interactive mode**: Guide users through subtree operations
@@ -1674,13 +1585,10 @@ The initial implementation will NOT support the following features. These limita
 3. **Bulk operations**: Operate on multiple subtrees simultaneously
 4. **Conflict strategies**: Provide merge strategy options (ours, theirs, union)
 5. **Performance optimization**: Parallel processing, better caching
-6. **Partial subtree**: Support for shallow subtrees (depth limit)
-7. **Subtree rename**: Handle moving subtree to different prefix
-8. **Nested subtree support**: Full support for subtrees within subtrees
-9. **Automatic subtree conflict resolution**: Smart conflict resolution for common cases
-10. **Integration with Jujutsu's sparse checkout features**: Efficient handling of large subtrees
-11. **git-subtree-aware diff and log operations**: Better visualization of subtree changes
-12. **Support for different merge strategies per subtree**: Configurable merge behavior
+6. **Subtree rename**: Handle moving subtree to different prefix
+7. **git-subtree-aware diff and log operations**: Better visualization of subtree changes
+8. **Support for different merge strategies per subtree**: Configurable merge behavior
+
 
 ## References
 

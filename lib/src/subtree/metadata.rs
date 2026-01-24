@@ -81,7 +81,7 @@ impl SubtreeMetadata {
     /// ```
     /// use jj_lib::subtree::SubtreeMetadata;
     ///
-    /// let description = "Add vendor library\n\nSubtree-dir: vendor/lib\n";
+    /// let description = "Add vendor library\n\ngit-subtree-dir: vendor/lib\n";
     /// let metadata = SubtreeMetadata::parse(description);
     /// assert!(metadata.subtree_dir.is_some());
     /// ```
@@ -164,7 +164,7 @@ impl SubtreeMetadata {
     ///     RepoPathBuf::from_internal_string("vendor/lib").unwrap()
     /// );
     /// let description = metadata.add_to_description("Add vendor library");
-    /// assert!(description.contains("\n\nSubtree-dir:"));
+    /// assert!(description.contains("\n\ngit-subtree-dir:"));
     /// ```
     pub fn add_to_description(&self, description: &str) -> String {
         let trailers = self.format_trailers();
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_parse_jj_format() {
-        let desc = "Message\n\nSubtree-dir: vendor/lib\n";
+        let desc = "Message\n\ngit-subtree-dir: vendor/lib\n";
         let meta = SubtreeMetadata::parse(desc);
         assert_eq!(
             meta.subtree_dir,
@@ -230,8 +230,8 @@ mod tests {
 
     #[test]
     fn test_parse_all_fields() {
-        let desc = "Message\n\nSubtree-dir: vendor/lib\nSubtree-mainline: \
-                    abc123abc123abc123abc123abc123abc123abc123ab\nSubtree-split: \
+        let desc = "Message\n\ngit-subtree-dir: vendor/lib\ngit-subtree-mainline: \
+                    abc123abc123abc123abc123abc123abc123abc123ab\ngit-subtree-split: \
                     def456def456def456def456def456def456def456de\n";
         let meta = SubtreeMetadata::parse(desc);
         assert_eq!(
