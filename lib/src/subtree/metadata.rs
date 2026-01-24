@@ -1,4 +1,4 @@
-// Copyright 2024 The Jujutsu Authors
+// Copyright 2026 The Jujutsu Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,28 +22,16 @@
 //! ```text
 //! Commit message here
 //!
-//! Subtree-dir: path/to/subtree
-//! Subtree-mainline: abc123...
-//! Subtree-split: def456...
+//! git-subtree-dir: path/to/subtree
+//! git-subtree-mainline: abc123...
+//! git-subtree-split: def456...
 //! ```
-//!
-//! Both jj-style (`Subtree-*`) and git-subtree-style (`git-subtree-*`) trailers
-//! are recognized for parsing, but jj always writes `Subtree-*` format.
 
 use crate::backend::CommitId;
 use crate::object_id::ObjectId as _;
 use crate::repo_path::RepoPath;
 use crate::repo_path::RepoPathBuf;
 use crate::trailer::parse_description_trailers;
-
-/// Trailer keys for subtree directory path.
-const SUBTREE_DIR_KEYS: &[&str] = &["Subtree-dir", "git-subtree-dir"];
-
-/// Trailer keys for mainline commit reference (used in split commits).
-const SUBTREE_MAINLINE_KEYS: &[&str] = &["Subtree-mainline", "git-subtree-mainline"];
-
-/// Trailer keys for split commit reference (used in rejoin commits).
-const SUBTREE_SPLIT_KEYS: &[&str] = &["Subtree-split", "git-subtree-split"];
 
 /// Subtree metadata stored in commit descriptions.
 ///
@@ -76,11 +64,6 @@ pub struct SubtreeMetadata {
 }
 
 impl SubtreeMetadata {
-    /// Creates empty subtree metadata.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Creates metadata with just a subtree directory.
     pub fn with_dir(dir: RepoPathBuf) -> Self {
         Self {
@@ -91,8 +74,7 @@ impl SubtreeMetadata {
 
     /// Parse metadata from a commit description.
     ///
-    /// Recognizes both jj format (`Subtree-*`) and git-subtree format
-    /// (`git-subtree-*`) for bidirectional compatibility.
+    /// Recognizes git-subtree format (`git-subtree-*`) for bidirectional compatibility.
     ///
     /// # Example
     ///
@@ -109,19 +91,19 @@ impl SubtreeMetadata {
 
         for trailer in trailers {
             // Check for subtree directory
-            if SUBTREE_DIR_KEYS.contains(&trailer.key.as_str()) {
+            if "git-subtree-dir" == trailer.key {
                 if let Ok(path) = RepoPath::from_internal_string(&trailer.value) {
                     metadata.subtree_dir = Some(path.to_owned());
                 }
             }
             // Check for mainline commit
-            else if SUBTREE_MAINLINE_KEYS.contains(&trailer.key.as_str()) {
+            else if "git-subtree-mainline" == trailer.key {
                 if let Some(id) = CommitId::try_from_hex(&trailer.value) {
                     metadata.mainline_commit = Some(id);
                 }
             }
             // Check for split commit
-            else if SUBTREE_SPLIT_KEYS.contains(&trailer.key.as_str()) {
+            else if "git-subtree-split" == trailer.key {
                 if let Some(id) = CommitId::try_from_hex(&trailer.value) {
                     metadata.split_commit = Some(id);
                 }
@@ -133,8 +115,7 @@ impl SubtreeMetadata {
 
     /// Format metadata as trailers.
     ///
-    /// Returns a string containing the trailer lines (without the message
-    /// body). The format uses jj-style keys (`Subtree-*`).
+    /// Returns a string containing the trailer lines (without the message body).
     ///
     /// # Example
     ///
@@ -146,23 +127,23 @@ impl SubtreeMetadata {
     ///     RepoPathBuf::from_internal_string("vendor/lib").unwrap()
     /// );
     /// let trailers = metadata.format_trailers();
-    /// assert!(trailers.contains("Subtree-dir: vendor/lib"));
+    /// assert!(trailers.contains("git-subtree-dir: vendor/lib"));
     /// ```
     pub fn format_trailers(&self) -> String {
-        let mut lines = Vec::new();
+        let mut lines = vec![];
 
         if let Some(ref dir) = self.subtree_dir {
-            lines.push(format!("Subtree-dir: {}", dir.as_internal_file_string()));
+            lines.push(format!("git-subtree-dir: {}", dir.as_internal_file_string()));
         }
         if let Some(ref id) = self.mainline_commit {
-            lines.push(format!("Subtree-mainline: {}", id.hex()));
+            lines.push(format!("git-subtree-mainline: {}", id.hex()));
         }
         if let Some(ref id) = self.split_commit {
-            lines.push(format!("Subtree-split: {}", id.hex()));
+            lines.push(format!("git-subtree-split: {}", id.hex()));
         }
 
         if lines.is_empty() {
-            String::new()
+            String::default()
         } else {
             lines.join("\n") + "\n"
         }
@@ -209,9 +190,9 @@ impl SubtreeMetadata {
     pub fn has_metadata(description: &str) -> bool {
         let trailers = parse_description_trailers(description);
         trailers.iter().any(|t| {
-            SUBTREE_DIR_KEYS.contains(&t.key.as_str())
-                || SUBTREE_MAINLINE_KEYS.contains(&t.key.as_str())
-                || SUBTREE_SPLIT_KEYS.contains(&t.key.as_str())
+            "git-subtree-dir" == t.key.as_str()
+                || "git-subtree-mainline" == t.key.as_str()
+                || "git-subtree-split" == t.key.as_str()
         })
     }
 
@@ -276,7 +257,7 @@ mod tests {
             split_commit: None,
         };
         let trailers = meta.format_trailers();
-        assert_eq!(trailers, "Subtree-dir: vendor/lib\n");
+        assert_eq!(trailers, "git-subtree-dir: vendor/lib\n");
     }
 
     #[test]
